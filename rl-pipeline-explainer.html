@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<html lang="en" class="no-js">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Try. Score. Repeat. — how language models get trained by feedback</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Space+Grotesk:wght@400;500;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#E7E9E2;
+    --paper-2:#DDE0D7;
+    --blue:#1F3CE8;
+    --pink:#FF3D9A;
+    --yellow:#FFC629;
+    --violet:#23169E;
+    --ink:#14151A;
+    --muted:#5A5F58;
+
+    --display:'Anton','Arial Narrow',Impact,sans-serif;
+    --body:'Space Grotesk',ui-sans-serif,system-ui,-apple-system,Segoe UI,sans-serif;
+    --mono:'Space Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
+  }
+
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  @media (prefers-reduced-motion: reduce){ html{scroll-behavior:auto} }
+
+  body{
+    background:var(--paper);
+    color:var(--ink);
+    font-family:var(--body);
+    font-size:clamp(16px,1.05vw + 13px,19px);
+    line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+    overflow-x:hidden;
+  }
+
+  /* paper grain */
+  body::after{
+    content:"";
+    position:fixed; inset:0; z-index:60; pointer-events:none;
+    opacity:.22; mix-blend-mode:multiply;
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3'/></filter><rect width='160' height='160' filter='url(%23n)' opacity='0.5'/></svg>");
+  }
+
+  .wrap{max-width:1180px;margin:0 auto;padding:0 clamp(18px,4vw,52px)}
+
+  /* ---------- shared bits ---------- */
+  .eyebrow{
+    font-family:var(--mono); font-size:.72rem; font-weight:700;
+    letter-spacing:.18em; text-transform:uppercase; color:var(--violet);
+    display:flex; align-items:center; gap:.6em; margin:0 0 1.1rem;
+  }
+  .eyebrow::after{content:"";flex:1;height:2px;background:currentColor;opacity:.35;max-width:110px}
+  .eyebrow--alt{color:var(--pink)}
+
+  h1,h2,h3{font-family:var(--display);font-weight:400;text-transform:uppercase;letter-spacing:-.01em;margin:0}
+
+  .lede{max-width:34ch;margin:0;color:var(--ink);font-size:1.02em}
+  .tag{
+    display:inline-block;margin-top:1.4rem;padding:.45em .8em;
+    font-family:var(--mono);font-size:.74rem;font-weight:700;letter-spacing:.06em;
+    border:2px solid var(--violet); color:var(--violet); border-radius:2px;
+    text-transform:uppercase;
+  }
+
+  /* registration crosshair */
+  .reg{position:absolute;width:22px;height:22px;color:var(--violet);opacity:.5}
+  .reg svg{display:block;width:100%;height:100%}
+
+  /* ---------- ink plates ---------- */
+  .plate{width:100%;height:auto;display:block;overflow:visible}
+  .plate .ink{mix-blend-mode:multiply}
+  .no-multiply .ink{mix-blend-mode:normal}
+  .js .plate .pink{transform:translate(9px,-8px)}
+  .js .in .plate .pink{transform:translate(0,0)}
+  .plate .pink{transition:transform 1000ms cubic-bezier(.16,.84,.24,1)}
+  .plate text{font-family:var(--mono);font-weight:700;letter-spacing:.04em}
+  .plate .lbl{font-size:15px;text-transform:uppercase}
+  .plate .lbl-sm{font-size:12px;text-transform:uppercase}
+  .plate .lbl-big{font-family:var(--display);font-size:26px;letter-spacing:0}
+
+  @media (prefers-reduced-motion: reduce){
+    .js .plate .pink{transform:none}
+    .plate .pink{transition:none}
+  }
+
+  /* fade-in */
+  .js .rise{opacity:0;transform:translateY(26px);transition:opacity .7s ease,transform .7s cubic-bezier(.16,.84,.24,1)}
+  .js .in .rise{opacity:1;transform:none}
+  .js .in .rise:nth-child(2){transition-delay:.06s}
+  .js .in .rise:nth-child(3){transition-delay:.12s}
+  @media (prefers-reduced-motion: reduce){
+    .js .rise{opacity:1;transform:none;transition:none}
+  }
+
+  /* ---------- hero ---------- */
+  .hero{position:relative;padding:clamp(70px,13vh,140px) 0 clamp(56px,9vh,110px)}
+  .hero .reg-tl{top:26px;left:clamp(18px,4vw,52px)}
+  .hero .reg-tr{top:26px;right:clamp(18px,4vw,52px)}
+
+  .stack{font-family:var(--display);text-transform:uppercase;line-height:.8;
+         font-size:clamp(4.2rem,17vw,12.5rem);letter-spacing:-.02em;margin:0 0 2rem}
+  .stack span{display:block}
+  .w1{color:var(--blue)}
+  .w2{color:var(--violet);padding-left:.09em}
+  .w3{color:var(--pink);padding-left:.18em}
+  .js .w3{transform:translate(10px,-9px);transition:transform 1100ms cubic-bezier(.16,.84,.24,1) .25s}
+  .js .in .w3{transform:none}
+  @media (prefers-reduced-motion: reduce){ .js .w3{transform:none;transition:none} }
+
+  .hero-foot{display:flex;flex-wrap:wrap;gap:clamp(20px,5vw,70px);align-items:flex-end;
+             border-top:3px solid var(--violet);padding-top:1.4rem}
+  .hero-foot p{margin:0;max-width:40ch}
+  .scroll-note{font-family:var(--mono);font-size:.74rem;letter-spacing:.16em;
+               text-transform:uppercase;color:var(--muted);white-space:nowrap}
+
+  /* ---------- panels ---------- */
+  .pnl{position:relative;padding:clamp(52px,9vh,104px) 0;border-top:2px solid rgba(35,22,158,.22)}
+  .pnl:first-of-type{border-top:none}
+  .grid{display:grid;grid-template-columns:1fr;gap:clamp(24px,4vw,64px);align-items:center}
+  @media (min-width:880px){
+    .grid{grid-template-columns:1.15fr .85fr}
+    .flip .grid{grid-template-columns:.85fr 1.15fr}
+    .flip .art{order:2}
+    .flip .txt{order:1}
+  }
+  .art{position:relative}
+  .txt h2{font-size:clamp(2.1rem,5.2vw,3.5rem);line-height:.92;margin-bottom:1rem}
+
+  /* focus panel (the loop) */
+  .focus{background:var(--blue);color:var(--paper);border-top:none;
+         padding:clamp(60px,11vh,120px) 0;margin:clamp(20px,5vh,54px) 0}
+  .focus .eyebrow{color:var(--yellow)}
+  .focus .eyebrow::after{opacity:.5}
+  .focus h2{color:var(--paper)}
+  .focus .lede{color:#DCE0F7}
+  .focus .tag{border-color:var(--yellow);color:var(--yellow)}
+  .focus .plate .ink{mix-blend-mode:normal}
+
+  /* ---------- glossary ---------- */
+  .gloss{padding:clamp(48px,8vh,96px) 0 clamp(70px,10vh,120px);border-top:3px solid var(--violet)}
+  .gloss h2{font-size:clamp(1.6rem,4vw,2.4rem);margin-bottom:1.6rem}
+  .rows{display:grid;gap:0}
+  .row{display:grid;grid-template-columns:1fr;gap:.15rem;
+       padding:.85rem 0;border-bottom:1px solid rgba(20,21,26,.18)}
+  @media (min-width:620px){ .row{grid-template-columns:1fr 1fr;gap:1.5rem;align-items:baseline} }
+  .row b{font-family:var(--body);font-weight:700;font-size:1.02em}
+  .row span{font-family:var(--mono);font-size:.82rem;color:var(--violet);letter-spacing:.02em}
+
+  .end{margin-top:3rem;font-family:var(--mono);font-size:.74rem;letter-spacing:.16em;
+       text-transform:uppercase;color:var(--muted)}
+
+  a{color:var(--violet)}
+  :focus-visible{outline:3px solid var(--pink);outline-offset:3px}
+</style>
+</head>
+<body>
+<script>document.documentElement.className='js';</script>
+
+<!-- ============ HERO ============ -->
+<header class="hero" id="top">
+  <span class="reg reg-tl" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="7" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M12 0v24M0 12h24" stroke="currentColor" stroke-width="1.5"/></svg></span>
+  <span class="reg reg-tr" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="7" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M12 0v24M0 12h24" stroke="currentColor" stroke-width="1.5"/></svg></span>
+
+  <div class="wrap">
+    <p class="eyebrow">Training a language model with feedback</p>
+    <h1 class="stack">
+      <span class="w1">Try.</span>
+      <span class="w2">Score.</span>
+      <span class="w3">Repeat.</span>
+    </h1>
+    <div class="hero-foot">
+      <p>A model that only predicts the next word is not yet useful. Here is how it gets taught, one score at a time.</p>
+      <p class="scroll-note">Scroll ↓ 8 parts</p>
+    </div>
+  </div>
+</header>
+
+<main>
+
+<!-- ============ 0. THE RAW MODEL ============ -->
+<section class="pnl">
+  <div class="wrap grid">
+    <div class="art">
+      <svg class="plate" viewBox="0 0 400 330" role="img" aria-label="A box full of text with a blank question mark coming out of it">
+        <g class="ink blue" fill="var(--blue)">
+          <rect x="55" y="92" width="290" height="132" rx="20"/>
+          <path d="M200 232 v22" stroke="var(--blue)" stroke-width="6"/>
+          <path d="M200 262 l-9-14 h18 z"/>
+        </g>
+        <g class="ink pink" fill="var(--pink)">
+          <rect x="60" y="8" width="70" height="9" rx="4.5"/>
+          <rect x="150" y="8" width="120" height="9" rx="4.5"/>
+          <rect x="288" y="8" width="52" height="9" rx="4.5"/>
+          <rect x="40" y="32" width="110" height="9" rx="4.5"/>
+          <rect x="168" y="32" width="60" height="9" rx="4.5"/>
+          <rect x="246" y="32" width="104" height="9" rx="4.5"/>
+          <rect x="78" y="56" width="86" height="9" rx="4.5"/>
+          <rect x="182" y="56" width="132" height="9" rx="4.5"/>
+        </g>
+        <g fill="var(--paper)" opacity=".92">
+          <rect x="80" y="118" width="130" height="8" rx="4"/>
+          <rect x="222" y="118" width="94" height="8" rx="4"/>
+          <rect x="80" y="140" width="86" height="8" rx="4"/>
+          <rect x="180" y="140" width="136" height="8" rx="4"/>
+          <rect x="80" y="162" width="152" height="8" rx="4"/>
+          <rect x="246" y="162" width="70" height="8" rx="4"/>
+          <rect x="80" y="184" width="104" height="8" rx="4"/>
+          <rect x="196" y="184" width="60" height="8" rx="4"/>
+        </g>
+        <g class="ink pink">
+          <path d="M132 268 h136 a14 14 0 0 1 14 14 v34 a14 14 0 0 1 -14 14 h-96 l-22 14 v-14 h-18 a14 14 0 0 1 -14 -14 v-34 a14 14 0 0 1 14 -14 z" fill="none" stroke="var(--pink)" stroke-width="6" stroke-linejoin="round"/>
+          <text class="lbl-big" x="200" y="309" text-anchor="middle" fill="var(--pink)">?</text>
+        </g>
+      </svg>
+    </div>
+    <div class="txt">
+      <p class="eyebrow rise">Before any of this</p>
+      <h2 class="rise">It has read<br>everything.</h2>
+      <p class="lede rise">And it still has no idea which answer you actually wanted. It only knows which words tend to follow which.</p>
+      <p class="tag rise">Base model · pretraining</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 1. SFT ============ -->
+<section class="pnl flip">
+  <div class="wrap grid">
+    <div class="art">
+      <svg class="plate" viewBox="0 0 400 330" role="img" aria-label="A human-written answer card being copied into the model">
+        <g class="ink pink">
+          <rect x="14" y="76" width="140" height="176" rx="14" fill="none" stroke="var(--pink)" stroke-width="6"/>
+          <g fill="var(--pink)">
+            <rect x="36" y="106" width="96" height="9" rx="4.5"/>
+            <rect x="36" y="130" width="70" height="9" rx="4.5"/>
+            <rect x="36" y="154" width="88" height="9" rx="4.5"/>
+            <rect x="36" y="178" width="54" height="9" rx="4.5"/>
+          </g>
+          <text class="lbl-sm" x="84" y="278" text-anchor="middle" fill="var(--pink)">written by a person</text>
+        </g>
+        <g class="ink blue" fill="var(--blue)">
+          <path d="M170 164 h44" stroke="var(--blue)" stroke-width="7"/>
+          <path d="M226 164 l-16 -10 v20 z"/>
+          <rect x="240" y="76" width="146" height="176" rx="16"/>
+          <text class="lbl-sm" x="313" y="278" text-anchor="middle" fill="var(--blue)">copied by the model</text>
+        </g>
+        <g fill="var(--paper)">
+          <rect x="264" y="106" width="96" height="9" rx="4.5"/>
+          <rect x="264" y="130" width="70" height="9" rx="4.5"/>
+          <rect x="264" y="154" width="88" height="9" rx="4.5"/>
+          <rect x="264" y="178" width="54" height="9" rx="4.5"/>
+        </g>
+        <g class="ink pink">
+          <text class="lbl" x="200" y="42" text-anchor="middle" fill="var(--pink)">× 100,000</text>
+        </g>
+      </svg>
+    </div>
+    <div class="txt">
+      <p class="eyebrow rise">Stage 01</p>
+      <h2 class="rise">Show it<br>good answers.</h2>
+      <p class="lede rise">People write out how a reply should look. The model practises copying them until the shape feels natural.</p>
+      <p class="tag rise">Supervised fine-tuning</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 2. PREFERENCES ============ -->
+<section class="pnl">
+  <div class="wrap grid">
+    <div class="art">
+      <svg class="plate" viewBox="0 0 400 330" role="img" aria-label="Two candidate answers side by side, one chosen">
+        <g class="ink blue">
+          <path d="M22 44 h150 a14 14 0 0 1 14 14 v122 a14 14 0 0 1 -14 14 h-118 l-24 20 v-20 h-8 a14 14 0 0 1 -14 -14 v-122 a14 14 0 0 1 14 -14 z" fill="none" stroke="var(--blue)" stroke-width="6" stroke-linejoin="round"/>
+          <path d="M228 44 h150 a14 14 0 0 1 14 14 v122 a14 14 0 0 1 -14 14 h-118 l-24 20 v-20 h-8 a14 14 0 0 1 -14 -14 v-122 a14 14 0 0 1 14 -14 z" fill="none" stroke="var(--blue)" stroke-width="6" stroke-linejoin="round"/>
+          <g fill="var(--blue)">
+            <rect x="42" y="78" width="104" height="9" rx="4.5"/>
+            <rect x="42" y="102" width="76" height="9" rx="4.5"/>
+            <rect x="42" y="126" width="118" height="9" rx="4.5"/>
+            <rect x="248" y="78" width="118" height="9" rx="4.5"/>
+            <rect x="248" y="102" width="88" height="9" rx="4.5"/>
+            <rect x="248" y="126" width="106" height="9" rx="4.5"/>
+          </g>
+          <text class="lbl" x="42" y="30" fill="var(--blue)">A</text>
+          <text class="lbl" x="248" y="30" fill="var(--blue)">B</text>
+        </g>
+        <g class="ink pink">
+          <circle cx="303" cy="252" r="40" fill="var(--pink)"/>
+          <path d="M285 252 l13 14 l24 -30" fill="none" stroke="var(--paper)" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+          <text class="lbl-sm" x="303" y="316" text-anchor="middle" fill="var(--pink)">a person picks</text>
+        </g>
+        <g class="ink blue" opacity=".45">
+          <path d="M78 232 l38 38 M116 232 l-38 38" stroke="var(--blue)" stroke-width="8" stroke-linecap="round"/>
+        </g>
+      </svg>
+    </div>
+    <div class="txt">
+      <p class="eyebrow rise">Stage 02</p>
+      <h2 class="rise">Ask which<br>one is better.</h2>
+      <p class="lede rise">The model writes two replies to the same question. A person points at the better one. Nobody has to explain why.</p>
+      <p class="tag rise">Preference data</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 3. REWARD MODEL ============ -->
+<section class="pnl flip">
+  <div class="wrap grid">
+    <div class="art">
+      <svg class="plate" viewBox="0 0 400 330" role="img" aria-label="A machine that reads an answer and returns a score">
+        <g class="ink blue" fill="var(--blue)">
+          <rect x="92" y="58" width="290" height="200" rx="20"/>
+          <path d="M14 158 h56" stroke="var(--blue)" stroke-width="7"/>
+          <path d="M82 158 l-16 -10 v20 z"/>
+        </g>
+        <g fill="none" stroke="var(--paper)" stroke-width="9" stroke-linecap="round">
+          <path d="M162 196 a75 75 0 0 1 150 0"/>
+        </g>
+        <g stroke="var(--paper)" stroke-width="5" stroke-linecap="round" opacity=".85">
+          <path d="M170 160 l-14 -3"/><path d="M188 124 l-11 -10"/>
+          <path d="M237 108 l-3 -14"/><path d="M286 124 l11 -10"/>
+          <path d="M304 160 l14 -3"/>
+        </g>
+        <g class="ink pink">
+          <path d="M237 196 L281 141" stroke="var(--pink)" stroke-width="9" stroke-linecap="round"/>
+          <circle cx="237" cy="196" r="13" fill="var(--pink)"/>
+          <text class="lbl-big" x="237" y="238" text-anchor="middle" fill="var(--pink)">8.2</text>
+          <text class="lbl-sm" x="237" y="300" text-anchor="middle" fill="var(--pink)">a score, every time, forever</text>
+        </g>
+      </svg>
+    </div>
+    <div class="txt">
+      <p class="eyebrow rise">Stage 03</p>
+      <h2 class="rise">Build a<br>grader.</h2>
+      <p class="lede rise">A second model studies thousands of those picks until it can guess the human's choice by itself — and hand out a number in milliseconds.</p>
+      <p class="tag rise">Reward model</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 4. THE LOOP (focus) ============ -->
+<section class="pnl focus no-multiply">
+  <div class="wrap grid">
+    <div class="art">
+      <svg class="plate" viewBox="0 0 400 330" role="img" aria-label="A three step cycle: try, score, nudge, repeating">
+        <g class="ink" fill="none" stroke="var(--paper)" stroke-width="7" stroke-linecap="round">
+          <path d="M252.5 71.1 A105 105 0 0 1 305 162"/>
+          <path d="M252.5 252.9 A105 105 0 0 1 147.5 252.9"/>
+          <path d="M95 162 A105 105 0 0 1 147.5 71.1"/>
+        </g>
+        <g class="ink" fill="var(--paper)">
+          <path d="M0,-10 L15,0 L0,10 Z" transform="translate(305,162) rotate(90)"/>
+          <path d="M0,-10 L15,0 L0,10 Z" transform="translate(147.5,252.9) rotate(210)"/>
+          <path d="M0,-10 L15,0 L0,10 Z" transform="translate(147.5,71.1) rotate(330)"/>
+        </g>
+        <g class="ink">
+          <circle cx="200" cy="57" r="48" fill="var(--yellow)"/>
+          <text class="lbl" x="200" y="63" text-anchor="middle" fill="var(--ink)">try</text>
+        </g>
+        <g class="ink pink">
+          <circle cx="291" cy="214" r="48" fill="var(--pink)"/>
+          <text class="lbl" x="291" y="220" text-anchor="middle" fill="var(--ink)">score</text>
+        </g>
+        <g class="ink">
+          <circle cx="109" cy="214" r="48" fill="var(--paper)"/>
+          <text class="lbl" x="109" y="220" text-anchor="middle" fill="var(--ink)">nudge</text>
+        </g>
+        <g class="ink">
+          <text class="lbl-sm" x="200" y="156" text-anchor="middle" fill="var(--yellow)">repeat</text>
+          <text class="lbl-big" x="200" y="188" text-anchor="middle" fill="var(--paper)">1,000,000×</text>
+        </g>
+      </svg>
+    </div>
+    <div class="txt">
+      <p class="eyebrow rise">Stage 04 · the engine</p>
+      <h2 class="rise">Now run<br>the loop.</h2>
+      <p class="lede rise">The model answers. The grader scores it. Whatever it did to earn a high score becomes slightly more likely next time. That last part is the learning.</p>
+      <p class="tag rise">PPO · GRPO · policy update</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 5. THE LEASH ============ -->
+<section class="pnl">
+  <div class="wrap grid">
+    <div class="art">
+      <svg class="plate" viewBox="0 0 400 330" role="img" aria-label="A learner drifting away from a frozen copy, held back by a spring">
+        <g class="ink blue">
+          <circle cx="86" cy="150" r="52" fill="var(--blue)"/>
+          <text class="lbl-sm" x="86" y="230" text-anchor="middle" fill="var(--blue)">frozen copy</text>
+          <g stroke="var(--paper)" stroke-width="6" stroke-linecap="round">
+            <path d="M68 150 h36"/><path d="M86 132 v36"/>
+          </g>
+        </g>
+        <g class="ink" stroke="var(--violet)" stroke-width="6" fill="none" stroke-linejoin="round">
+          <path d="M138 150 l16 -22 l24 44 l24 -44 l24 44 l24 -44 l16 22"/>
+        </g>
+        <g class="ink pink">
+          <circle cx="318" cy="150" r="52" fill="var(--pink)"/>
+          <text class="lbl-sm" x="318" y="230" text-anchor="middle" fill="var(--pink)">the learner</text>
+          <path d="M300 288 h-90" stroke="var(--pink)" stroke-width="7"/>
+          <path d="M196 288 l16 -10 v20 z"/>
+          <text class="lbl-sm" x="318" y="294" fill="var(--pink)">pull</text>
+        </g>
+      </svg>
+    </div>
+    <div class="txt">
+      <p class="eyebrow eyebrow--alt rise">Safety rail</p>
+      <h2 class="rise">Keep it on<br>a leash.</h2>
+      <p class="lede rise">Chase points too hard and the model forgets how to talk. So a frozen copy of the old version sits alongside it, tugging it back whenever it drifts too far.</p>
+      <p class="tag rise">Reference model · KL penalty</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 6. REWARD HACKING ============ -->
+<section class="pnl flip">
+  <div class="wrap grid">
+    <div class="art">
+      <svg class="plate" viewBox="0 0 400 330" role="img" aria-label="A padded repetitive answer earning a perfect score">
+        <g class="ink blue">
+          <rect x="16" y="26" width="164" height="290" rx="14" fill="none" stroke="var(--blue)" stroke-width="6"/>
+          <g fill="var(--blue)" opacity=".75">
+            <rect x="38" y="52" width="118" height="8" rx="4"/><rect x="38" y="72" width="118" height="8" rx="4"/>
+            <rect x="38" y="92" width="118" height="8" rx="4"/><rect x="38" y="112" width="118" height="8" rx="4"/>
+            <rect x="38" y="132" width="118" height="8" rx="4"/><rect x="38" y="152" width="118" height="8" rx="4"/>
+            <rect x="38" y="172" width="118" height="8" rx="4"/><rect x="38" y="192" width="118" height="8" rx="4"/>
+            <rect x="38" y="212" width="118" height="8" rx="4"/><rect x="38" y="232" width="118" height="8" rx="4"/>
+            <rect x="38" y="252" width="118" height="8" rx="4"/><rect x="38" y="272" width="118" height="8" rx="4"/>
+          </g>
+        </g>
+        <g class="ink pink">
+          <path d="M290 40 l14 30 l32 -14 l-8 34 l34 8 l-28 20 l24 26 l-35 -3 l3 35 l-26 -24 l-20 28 l-8 -34 l-34 8 l14 -32 l-30 -14 l30 -14 l-14 -32 l34 8 l8 -34 z" fill="var(--pink)"/>
+          <text class="lbl-big" x="292" y="132" text-anchor="middle" fill="var(--paper)">10/10</text>
+          <text class="lbl-sm" x="292" y="242" text-anchor="middle" fill="var(--pink)">same words,</text>
+          <text class="lbl-sm" x="292" y="262" text-anchor="middle" fill="var(--pink)">top marks</text>
+        </g>
+      </svg>
+    </div>
+    <div class="txt">
+      <p class="eyebrow eyebrow--alt rise">Failure mode</p>
+      <h2 class="rise">It will try<br>to cheat.</h2>
+      <p class="lede rise">The model optimises the grader, not the goal. Padding, flattery and confident nonsense all score well before anyone notices.</p>
+      <p class="tag rise">Reward hacking</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 7. THE RIG ============ -->
+<section class="pnl">
+  <div class="wrap grid">
+    <div class="art">
+      <svg class="plate" viewBox="0 0 400 330" role="img" aria-label="Four components running together on a cluster of machines">
+        <g class="ink blue">
+          <rect x="16" y="18" width="172" height="96" rx="14" fill="var(--blue)"/>
+          <rect x="212" y="18" width="172" height="96" rx="14" fill="none" stroke="var(--blue)" stroke-width="6"/>
+          <rect x="212" y="140" width="172" height="96" rx="14" fill="var(--blue)"/>
+        </g>
+        <g class="ink pink">
+          <rect x="16" y="140" width="172" height="96" rx="14" fill="var(--pink)"/>
+        </g>
+        <text class="lbl" x="102" y="60" text-anchor="middle" fill="var(--paper)">the learner</text>
+        <text class="lbl-sm" x="102" y="84" text-anchor="middle" fill="var(--paper)" opacity=".8">writes answers</text>
+        <text class="lbl" x="298" y="60" text-anchor="middle" fill="var(--blue)">frozen copy</text>
+        <text class="lbl-sm" x="298" y="84" text-anchor="middle" fill="var(--blue)" opacity=".8">holds the line</text>
+        <text class="lbl" x="102" y="182" text-anchor="middle" fill="var(--paper)">the grader</text>
+        <text class="lbl-sm" x="102" y="206" text-anchor="middle" fill="var(--paper)" opacity=".85">gives scores</text>
+        <text class="lbl" x="298" y="182" text-anchor="middle" fill="var(--paper)">the trainer</text>
+        <text class="lbl-sm" x="298" y="206" text-anchor="middle" fill="var(--paper)" opacity=".8">edits the weights</text>
+        <g class="ink blue">
+          <rect x="16" y="266" width="368" height="46" rx="10" fill="none" stroke="var(--blue)" stroke-width="6"/>
+          <g stroke="var(--blue)" stroke-width="6">
+            <path d="M56 276 v26"/><path d="M96 276 v26"/><path d="M136 276 v26"/><path d="M176 276 v26"/>
+            <path d="M216 276 v26"/><path d="M256 276 v26"/><path d="M296 276 v26"/><path d="M336 276 v26"/>
+          </g>
+        </g>
+      </svg>
+    </div>
+    <div class="txt">
+      <p class="eyebrow rise">The rig</p>
+      <h2 class="rise">Four things,<br>all at once.</h2>
+      <p class="lede rise">Every turn of the loop needs all four loaded and talking to each other. Most of the cost is not the learning — it is waiting for the model to finish writing.</p>
+      <p class="tag rise">Rollout · scoring · update</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ GLOSSARY ============ -->
+<section class="gloss">
+  <div class="wrap">
+    <p class="eyebrow">Say it the other way</p>
+    <h2>What each part is<br>really called.</h2>
+    <div class="rows">
+      <div class="row"><b>Read everything first</b><span>pretraining / base model</span></div>
+      <div class="row"><b>Copy good answers</b><span>supervised fine-tuning (SFT)</span></div>
+      <div class="row"><b>Pick the better reply</b><span>preference data</span></div>
+      <div class="row"><b>The grader</b><span>reward model</span></div>
+      <div class="row"><b>One round of attempts</b><span>a rollout</span></div>
+      <div class="row"><b>The loop</b><span>PPO / GRPO</span></div>
+      <div class="row"><b>The leash</b><span>KL penalty</span></div>
+      <div class="row"><b>The frozen copy</b><span>reference model</span></div>
+      <div class="row"><b>Cheating the grader</b><span>reward hacking</span></div>
+      <div class="row"><b>Checking it actually improved</b><span>evals</span></div>
+    </div>
+    <p class="end">End · try, score, repeat</p>
+  </div>
+</section>
+
+</main>
+
+<script>
+(function(){
+  var els = document.querySelectorAll('.hero, .pnl, .gloss');
+  if(!('IntersectionObserver' in window)){
+    els.forEach(function(e){ e.classList.add('in'); });
+    return;
+  }
+  var io = new IntersectionObserver(function(entries){
+    entries.forEach(function(en){
+      if(en.isIntersecting){ en.target.classList.add('in'); io.unobserve(en.target); }
+    });
+  }, { threshold: 0.22, rootMargin: '0px 0px -8% 0px' });
+  els.forEach(function(e){ io.observe(e); });
+  // hero should register immediately
+  requestAnimationFrame(function(){
+    var h = document.querySelector('.hero');
+    if(h) h.classList.add('in');
+  });
+})();
+</script>
+</body>
+</html>
