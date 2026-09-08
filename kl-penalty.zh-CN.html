@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KL 惩罚：给语言模型一根牵引绳</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Inter:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#DDE2EE;
+    --card:#F7F8FC;
+    --ink:#141B33;
+    --muted:#5A6484;
+    --old:#2B3A67;
+    --new:#6E3FD3;
+    --reward:#E9A13B;
+    --bad:#CE3350;
+    --display:"Bricolage Grotesque","Arial Black",system-ui,sans-serif;
+    --body:"Inter",system-ui,-apple-system,sans-serif;
+    --mono:"Space Mono",ui-monospace,monospace;
+  }
+
+  *{box-sizing:border-box}
+
+  html{
+    scroll-snap-type:y proximity;
+    scroll-behavior:smooth;
+  }
+
+  body{
+    margin:0;
+    background-color:var(--paper);
+    background-image:radial-gradient(circle, rgba(20,27,51,.10) 1px, transparent 1px);
+    background-size:26px 26px;
+    color:var(--ink);
+    font-family:var(--body);
+    -webkit-font-smoothing:antialiased;
+  }
+
+  /* ---- the cord: a leash running down the left edge, doubling as progress ---- */
+  .rail{
+    position:fixed; left:20px; top:0; bottom:0; width:14px;
+    z-index:20; pointer-events:none;
+  }
+  .rail-line{
+    position:absolute; left:6px; top:0; bottom:0; width:2px;
+    background:repeating-linear-gradient(to bottom, var(--ink) 0 6px, transparent 6px 12px);
+    opacity:.30;
+  }
+  .rail-knot{
+    position:absolute; left:0; width:14px; height:14px; border-radius:50%;
+    background:var(--new); border:2px solid var(--paper);
+    top:0; transform:translateY(-50%);
+  }
+
+  /* ---- panels ---- */
+  .panel{
+    min-height:100dvh;
+    scroll-snap-align:center;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:30px;
+    padding:70px 26px 70px 56px;
+    text-align:center;
+  }
+
+  .eyebrow{
+    font-family:var(--mono); font-size:.66rem; letter-spacing:.2em;
+    text-transform:uppercase; color:var(--muted); margin:0;
+  }
+
+  h1{
+    font-family:var(--display); font-weight:800;
+    font-size:clamp(3.2rem,15vw,9rem); line-height:.84; letter-spacing:-.045em;
+    margin:0;
+  }
+  h2{
+    font-family:var(--display); font-weight:800;
+    font-size:clamp(1.9rem,6.4vw,3.5rem); line-height:1.0; letter-spacing:-.03em;
+    margin:0; max-width:16ch;
+  }
+  .note{
+    font-size:1rem; line-height:1.5; color:var(--muted);
+    max-width:34ch; margin:0;
+  }
+  .stage{width:100%; max-width:720px}
+  .stage svg{width:100%; height:auto; display:block; overflow:visible}
+  .txt{font-family:var(--body); font-size:21px; font-weight:500; fill:var(--ink)}
+  .txt-sm{font-family:var(--mono); font-size:15px; letter-spacing:.08em; fill:var(--muted)}
+
+  /* ---- probability bars ---- */
+  .charts{display:flex; flex-wrap:wrap; gap:18px; justify-content:center; width:100%; max-width:720px}
+  .chart{
+    flex:1 1 280px; background:var(--card); border:2px solid var(--ink);
+    border-radius:20px; padding:20px 18px 14px;
+  }
+  .chart-head{display:flex; justify-content:space-between; align-items:baseline; margin-bottom:16px}
+  .chart-head b{font-family:var(--mono); font-size:.8rem; letter-spacing:.06em}
+  .kl{font-family:var(--mono); font-size:.8rem; padding:3px 9px; border-radius:99px; color:#fff}
+  .kl.low{background:var(--old)}
+  .kl.high{background:var(--bad)}
+  .bars{display:flex; align-items:flex-end; justify-content:space-around; height:120px; gap:6px}
+  .grp{display:flex; align-items:flex-end; gap:3px}
+  .bar{width:13px; border-radius:3px 3px 0 0; min-height:3px}
+  .bar.b4{background:var(--old)}
+  .bar.aft{background:var(--new)}
+  .xlab{display:flex; justify-content:space-around; gap:6px; margin-top:8px}
+  .xlab span{font-family:var(--mono); font-size:.62rem; color:var(--muted); flex:1}
+  .legend{display:flex; gap:18px; font-family:var(--mono); font-size:.68rem; color:var(--muted); letter-spacing:.08em}
+  .legend i{display:inline-block; width:11px; height:11px; border-radius:3px; margin-right:6px; vertical-align:-1px}
+
+  /* ---- the knob ---- */
+  .knob{
+    width:100%; max-width:680px; background:var(--card);
+    border:2px solid var(--ink); border-radius:24px; padding:26px 22px 22px;
+    text-align:left;
+  }
+  .track{position:relative; height:96px; margin:6px 0 10px}
+  .anchor{
+    position:absolute; left:0; top:26px; width:34px; height:34px; border-radius:50%;
+    background:var(--old);
+  }
+  .goal{
+    position:absolute; right:0; top:26px; width:34px; height:34px; border-radius:9px;
+    background:var(--reward); transform:rotate(45deg);
+  }
+  .leash{
+    position:absolute; left:34px; top:42px; height:3px; background:var(--ink); opacity:.5;
+  }
+  .runner{
+    position:absolute; top:22px; width:42px; height:42px; border-radius:50%;
+    background:var(--new); border:3px solid var(--card);
+    transform:translateX(-50%);
+  }
+  .endcap{position:absolute; bottom:0; font-family:var(--mono); font-size:.6rem; letter-spacing:.1em; color:var(--muted)}
+  .endcap.l{left:0} .endcap.r{right:0}
+
+  .knob input[type=range]{width:100%; accent-color:var(--new); height:26px; cursor:grab}
+  .knob input[type=range]:focus-visible{outline:3px solid var(--new); outline-offset:4px; border-radius:6px}
+
+  .readout{display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:14px}
+  .readout b{font-family:var(--mono); font-size:.78rem; letter-spacing:.06em; color:var(--muted)}
+  .beta{font-family:var(--display); font-weight:800; font-size:1.6rem; letter-spacing:-.02em}
+
+  .verdict{
+    border-radius:16px; padding:16px 18px; border:2px solid var(--ink);
+    background:var(--paper);
+  }
+  .verdict .tag{font-family:var(--mono); font-size:.64rem; letter-spacing:.14em; text-transform:uppercase; display:block; margin-bottom:8px}
+  .verdict .say{font-size:1.05rem; line-height:1.45; font-weight:500; margin:0}
+
+  .final{font-family:var(--display); font-weight:800; font-size:clamp(2rem,7vw,4.2rem); line-height:.98; letter-spacing:-.035em; max-width:14ch; margin:0}
+
+  @media (prefers-reduced-motion: no-preference){
+    .runner,.leash{transition:left .18s ease, width .18s ease}
+  }
+  @media (max-width:520px){
+    .rail{left:10px}
+    .panel{padding-left:40px}
+  }
+
+html[lang="zh-CN"] body{font-family:"PingFang SC","Microsoft YaHei","Noto Sans CJK SC",system-ui,sans-serif}
+html[lang="zh-CN"] h1,html[lang="zh-CN"] h2,html[lang="zh-CN"] h3{line-height:1.2;letter-spacing:0}
+</style>
+<!-- eli5:head:start -->
+<link rel="alternate" hreflang="en" href="kl-penalty.en.html">
+<link rel="alternate" hreflang="zh-CN" href="kl-penalty.zh-CN.html">
+<link rel="stylesheet" href="language.css">
+<script src="language.js" defer></script>
+<!-- eli5:head:end -->
+</head>
+<body>
+<!-- eli5:nav:start -->
+<div class="eli5-site-nav" role="navigation" aria-label="图解导航与语言选择">
+  <a class="eli5-nav-home" href="index.html?lang=zh-CN">← 图解目录</a>
+  <div class="eli5-languages">
+    <a href="kl-penalty.zh-CN.html" data-language="zh-CN" lang="zh-CN" hreflang="zh-CN" aria-current="page">简体中文</a>
+    <a href="kl-penalty.en.html" data-language="en" lang="en" hreflang="en">English</a>
+  </div>
+</div>
+<!-- eli5:nav:end -->
+
+<div class="rail" aria-hidden="true">
+  <div class="rail-line"></div>
+  <div class="rail-knot" id="knot"></div>
+</div>
+
+<!-- 1 · HERO -->
+<section class="panel">
+  <p class="eyebrow">AI 训练如何避免跑偏</p>
+  <h1>KL<br>惩罚</h1>
+  <div class="stage" style="max-width:560px">
+    <svg viewBox="0 0 560 190" role="img" aria-label="两个圆由一根松弛的绳子连接">
+      <path d="M160 90 Q280 175 400 90" fill="none" stroke="var(--ink)" stroke-width="6" stroke-linecap="round" opacity=".55"/>
+      <circle cx="140" cy="90" r="46" fill="var(--old)"/>
+      <circle cx="420" cy="90" r="46" fill="var(--new)"/>
+    </svg>
+  </div>
+  <p class="note">在原来的模型和正在训练的模型之间，系一根牵引绳。</p>
+</section>
+
+<!-- 2 · THE MODEL YOU START WITH -->
+<section class="panel">
+  <p class="eyebrow">第一步</p>
+  <h2>先有一个已经能正常工作的模型。</h2>
+  <div class="stage">
+    <svg viewBox="0 0 620 250" role="img" aria-label="模型正在合理地回答问题">
+      <circle cx="120" cy="125" r="58" fill="var(--old)"/>
+      <polygon points="254,110 214,132 254,156" fill="var(--card)" stroke="var(--old)" stroke-width="3"/>
+      <rect x="250" y="70" width="350" height="112" rx="26" fill="var(--card)" stroke="var(--old)" stroke-width="3"/>
+      <text class="txt-sm" x="276" y="104">鸡蛋要煮多久？</text>
+      <text class="txt" x="276" y="146">煮大约 7 分钟。</text>
+    </svg>
+  </div>
+</section>
+
+<!-- 3 · TRAINING PUSHES IT -->
+<section class="panel">
+  <p class="eyebrow">第二步</p>
+  <h2>再训练它，争取更高的分数。</h2>
+  <div class="stage">
+    <svg viewBox="0 0 620 250" role="img" aria-label="模型被推向代表奖励的星星">
+      <circle cx="110" cy="125" r="52" fill="var(--new)"/>
+      <path d="M185 125 H430" stroke="var(--ink)" stroke-width="6" stroke-dasharray="14 12" stroke-linecap="round"/>
+      <polygon points="455,125 425,108 425,142" fill="var(--ink)"/>
+      <polygon points="530,62 552,112 606,118 566,155 577,208 530,181 483,208 494,155 454,118 508,112"
+               fill="var(--reward)"/>
+      <text class="txt-sm" x="530" y="240" text-anchor="middle">更高分</text>
+    </svg>
+  </div>
+  <p class="note">好回答能得分，它就学着去争取分数。</p>
+</section>
+
+<!-- 4 · IT BREAKS -->
+<section class="panel">
+  <p class="eyebrow">问题来了</p>
+  <h2>过度追求分数，回答就可能不知所云。</h2>
+  <div class="stage">
+    <svg viewBox="0 0 620 250" role="img" aria-label="模型偏离原来的位置很远，开始胡言乱语">
+      <circle cx="80" cy="125" r="40" fill="none" stroke="var(--old)" stroke-width="4" stroke-dasharray="8 8" opacity=".5"/>
+      <path d="M130 125 H210" stroke="var(--bad)" stroke-width="5" stroke-dasharray="12 10" stroke-linecap="round"/>
+      <circle cx="262" cy="125" r="46" fill="var(--bad)"/>
+      <polygon points="368,110 328,132 368,156" fill="var(--card)" stroke="var(--bad)" stroke-width="3"/>
+      <rect x="364" y="70" width="248" height="112" rx="26" fill="var(--card)" stroke="var(--bad)" stroke-width="3"/>
+      <text class="txt" x="386" y="118">鸡蛋！！！最佳</text>
+      <text class="txt" x="386" y="150">回答 ★★★★★</text>
+      <text class="txt-sm" x="80" y="196" text-anchor="middle">原来的位置</text>
+    </svg>
+  </div>
+  <p class="note">它找到了刷高分的捷径，却忘了怎么正常说话。</p>
+</section>
+
+<!-- 5 · THE LEASH -->
+<section class="panel">
+  <p class="eyebrow">解决办法</p>
+  <h2>于是，把它拴在原来的自己身上。</h2>
+  <div class="stage">
+    <svg viewBox="0 0 620 230" role="img" aria-label="连接旧模型和新模型的弹簧">
+      <circle cx="80" cy="115" r="44" fill="none" stroke="var(--old)" stroke-width="5" stroke-dasharray="9 9"/>
+      <path d="M124 115 L155 78 L185 152 L215 78 L245 152 L275 78 L305 152 L335 78 L365 152 L396 115"
+            fill="none" stroke="var(--ink)" stroke-width="6" stroke-linejoin="round" stroke-linecap="round"/>
+      <circle cx="440" cy="115" r="44" fill="var(--new)"/>
+      <text class="txt-sm" x="260" y="205" text-anchor="middle">往回拉</text>
+    </svg>
+  </div>
+  <p class="note">它仍然可以改变，只是需要克服一点拉力。</p>
+</section>
+
+<!-- 6 · WHAT KL MEASURES -->
+<section class="panel">
+  <p class="eyebrow">“KL”到底是什么</p>
+  <h2>用一个数衡量它变了多少。</h2>
+  <div class="legend">
+    <span><i style="background:var(--old)"></i>之前</span>
+    <span><i style="background:var(--new)"></i>之后</span>
+  </div>
+  <div class="charts">
+    <div class="chart">
+      <div class="chart-head"><b>变化较小</b><span class="kl low">KL 0.03</span></div>
+      <div class="bars">
+        <div class="grp"><div class="bar b4" style="height:92%"></div><div class="bar aft" style="height:88%"></div></div>
+        <div class="grp"><div class="bar b4" style="height:5%"></div><div class="bar aft" style="height:7%"></div></div>
+        <div class="grp"><div class="bar b4" style="height:3%"></div><div class="bar aft" style="height:4%"></div></div>
+        <div class="grp"><div class="bar b4" style="height:2%"></div><div class="bar aft" style="height:3%"></div></div>
+      </div>
+      <div class="xlab"><span>巴黎</span><span>这</span><span>一个</span><span>在</span></div>
+    </div>
+    <div class="chart">
+      <div class="chart-head"><b>变化很大</b><span class="kl high">KL 2.41</span></div>
+      <div class="bars">
+        <div class="grp"><div class="bar b4" style="height:92%"></div><div class="bar aft" style="height:9%"></div></div>
+        <div class="grp"><div class="bar b4" style="height:5%"></div><div class="bar aft" style="height:14%"></div></div>
+        <div class="grp"><div class="bar b4" style="height:3%"></div><div class="bar aft" style="height:6%"></div></div>
+        <div class="grp"><div class="bar b4" style="height:2%"></div><div class="bar aft" style="height:78%"></div></div>
+      </div>
+      <div class="xlab"><span>巴黎</span><span>这</span><span>一个</span><span>在</span></div>
+    </div>
+  </div>
+  <p class="note">面对同一个问题，它现在更倾向选择哪个词？概率分布的差别越大，KL 值就越大。</p>
+</section>
+
+<!-- 7 · THE PRICE -->
+<section class="panel">
+  <p class="eyebrow">取舍规则</p>
+  <div class="stage" style="max-width:640px">
+    <svg viewBox="0 0 640 170" role="img" aria-label="得分减去 β 乘以偏离程度">
+      <text x="4" y="86" font-family="var(--display)" font-weight="800" font-size="52" fill="var(--reward)">得分</text>
+      <text x="182" y="86" font-family="var(--display)" font-weight="800" font-size="52" fill="var(--ink)">−</text>
+      <text x="238" y="86" font-family="var(--display)" font-weight="800" font-size="52" fill="var(--new)">β</text>
+      <text x="288" y="86" font-family="var(--display)" font-weight="800" font-size="52" fill="var(--ink)">×</text>
+      <text x="348" y="86" font-family="var(--display)" font-weight="800" font-size="52" fill="var(--old)">偏离程度</text>
+      <text class="txt-sm" x="0" y="130">挣到的分数</text>
+      <text class="txt-sm" x="348" y="130">扣掉的分数</text>
+    </svg>
+  </div>
+  <h2>只有当改变带来的好处抵得过代价，它才值得偏离。</h2>
+</section>
+
+<!-- 8 · THE KNOB -->
+<section class="panel">
+  <p class="eyebrow">动手试试</p>
+  <h2>β 决定牵引绳有多紧。</h2>
+  <div class="knob">
+    <div class="track">
+      <div class="anchor" title="原来的自己"></div>
+      <div class="leash" id="leash"></div>
+      <div class="runner" id="runner"></div>
+      <div class="goal"></div>
+      <span class="endcap l">原来的自己</span>
+      <span class="endcap r">最高得分</span>
+    </div>
+    <label for="beta" style="display:block">
+      <input type="range" id="beta" min="0" max="10" step="0.1" value="1.6" aria-label="KL 惩罚强度 β">
+    </label>
+    <div class="readout">
+      <span><b>β</b> <span class="beta" id="betaOut">1.6</span></span>
+      <span><b>偏离原模型的程度</b> <span class="beta" id="klOut">2.10</span></span>
+    </div>
+    <div class="verdict">
+      <span class="tag" id="tag">平衡</span>
+      <p class="say" id="say">蛋黄凝固大约要煮 7 分钟；喜欢溏心的话，煮 6 分钟。</p>
+    </div>
+  </div>
+  <p class="note">拖动滑块。绳子太松，容易胡言乱语；绳子太紧，又学不到新东西。</p>
+</section>
+
+<!-- 9 · CLOSE -->
+<section class="panel">
+  <div class="stage" style="max-width:340px">
+    <svg viewBox="0 0 340 120" role="img" aria-label="两个圆由一根短绳连接">
+      <path d="M110 60 Q170 92 230 60" fill="none" stroke="var(--ink)" stroke-width="5" stroke-linecap="round" opacity=".55"/>
+      <circle cx="90" cy="60" r="30" fill="var(--old)"/>
+      <circle cx="250" cy="60" r="30" fill="var(--new)"/>
+    </svg>
+  </div>
+  <p class="final">变得更好，也别面目全非。</p>
+  <p class="eyebrow">核心思路就是这样</p>
+</section>
+
+<script>
+(function(){
+  var beta   = document.getElementById('beta');
+  var runner = document.getElementById('runner');
+  var leash  = document.getElementById('leash');
+  var bOut   = document.getElementById('betaOut');
+  var kOut   = document.getElementById('klOut');
+  var tag    = document.getElementById('tag');
+  var say    = document.getElementById('say');
+
+  var STATES = {
+    loose:   { tag:'牵引绳太松 · 钻评分的空子', color:'var(--bad)',
+               text:'鸡蛋！！！最佳回答 ★★★★★ 鸡蛋！！！太有帮助了！！！' },
+    good:    { tag:'平衡 · 有进步，也保留原来的能力', color:'var(--new)',
+               text:'蛋黄凝固大约要煮 7 分钟；喜欢溏心的话，煮 6 分钟。' },
+    tight:   { tag:'牵引绳太紧 · 学不到新东西', color:'var(--old)',
+               text:'煮大约 7 分钟。' }
+  };
+
+  function update(){
+    var b = parseFloat(beta.value);
+    var pos = Math.max(7, 100 / (1 + 0.45 * b));      // % across the track
+    var kl  = Math.min(12, 6 / (0.28 + b));
+
+    runner.style.left = pos + '%';
+    leash.style.width = 'calc(' + pos + '% - 34px)';
+    bOut.textContent  = b.toFixed(1);
+    kOut.textContent  = kl.toFixed(2);
+
+    var s = b < 0.5 ? STATES.loose : (b > 4 ? STATES.tight : STATES.good);
+    runner.style.background = s.color;
+    tag.textContent = s.tag;
+    tag.style.color = s.color;
+    say.textContent = s.text;
+  }
+
+  beta.addEventListener('input', update);
+  update();
+
+  // leash knot tracks scroll progress
+  var knot = document.getElementById('knot');
+  function track(){
+    var max = document.documentElement.scrollHeight - window.innerHeight;
+    var p = max > 0 ? window.scrollY / max : 0;
+    knot.style.top = (p * (window.innerHeight - 20) + 10) + 'px';
+  }
+  window.addEventListener('scroll', track, {passive:true});
+  window.addEventListener('resize', track);
+  track();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>vLLM / PagedAttention：一本可以随便翻页的显存</title>
+<style>
+  :root{
+    --paper:#EDE9DF;
+    --ink:#22201C;
+    --blue:#0B5FA5;
+    --pink:#F2549B;
+    --yellow:#FFC53D;
+    --ghost:rgba(34,32,28,.13);
+    --rule:rgba(34,32,28,.22);
+    --display:"PingFang SC","HarmonyOS Sans SC","Hiragino Sans GB","Source Han Sans SC","Noto Sans SC","Microsoft YaHei",sans-serif;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,"Courier New",monospace;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0;background:var(--paper);color:var(--ink);
+    font-family:var(--display);
+    -webkit-font-smoothing:antialiased;
+  }
+  /* 纸张颗粒：油印机的手感 */
+  body::after{
+    content:"";position:fixed;inset:0;pointer-events:none;z-index:99;
+    opacity:.5;mix-blend-mode:multiply;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='.22'/%3E%3C/svg%3E");
+  }
+  .wrap{max-width:1040px;margin:0 auto;padding:0 24px}
+
+  /* ---------- 封面 ---------- */
+  header{padding:14vh 0 10vh;position:relative}
+  .eyebrow{
+    font-family:var(--mono);font-size:12px;letter-spacing:.22em;
+    text-transform:uppercase;color:var(--blue);margin:0 0 26px
+  }
+  h1{
+    font-size:clamp(40px,8.2vw,92px);line-height:1.02;letter-spacing:-.03em;
+    font-weight:800;margin:0 0 28px;max-width:14em
+  }
+  h1 em{font-style:normal;color:var(--pink)}
+  .lede{font-size:clamp(17px,2.3vw,23px);line-height:1.6;max-width:22em;margin:0;opacity:.82}
+
+  /* ---------- 每一"页" ---------- */
+  section{padding:9vh 0;border-top:1px solid var(--rule)}
+  .folio{
+    font-family:var(--mono);font-size:12px;letter-spacing:.2em;color:var(--blue);
+    display:flex;align-items:center;gap:12px;margin-bottom:22px
+  }
+  .folio b{font-weight:700}
+  .folio span{height:1px;flex:1;background:var(--rule);max-width:120px}
+  h2{
+    font-size:clamp(28px,5.4vw,54px);line-height:1.14;letter-spacing:-.02em;
+    font-weight:800;margin:0 0 18px;max-width:16em
+  }
+  h2 mark{background:linear-gradient(transparent 62%, var(--yellow) 62%);padding:0 .06em}
+  p.say{font-size:clamp(16px,2vw,20px);line-height:1.75;max-width:26em;margin:0;opacity:.8}
+  .fig{margin:44px 0 0}
+  svg{display:block;width:100%;height:auto;overflow:visible}
+  .ov{mix-blend-mode:multiply}
+  text{font-family:var(--mono);fill:var(--ink)}
+  .lab{font-size:15px;letter-spacing:.1em}
+  .lab-sm{font-size:13px;letter-spacing:.08em;opacity:.6}
+  .cjk{font-family:var(--display);font-size:16px;letter-spacing:.04em}
+  .big{font-family:var(--display);font-weight:800;font-size:44px;letter-spacing:-.02em}
+
+  /* 结果条 */
+  .stat{display:flex;flex-wrap:wrap;gap:14px;margin-top:40px}
+  .card{
+    flex:1 1 220px;border:1.5px solid var(--ink);padding:22px 20px;background:transparent
+  }
+  .card b{display:block;font-size:clamp(34px,6vw,52px);font-weight:800;letter-spacing:-.03em;line-height:1}
+  .card span{display:block;margin-top:10px;font-family:var(--mono);font-size:12px;letter-spacing:.14em;opacity:.65}
+  .card.pk b{color:var(--pink)} .card.bl b{color:var(--blue)}
+
+  /* 词汇表 */
+  footer{border-top:1px solid var(--rule);padding:8vh 0 12vh}
+  dl{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:28px;margin:34px 0 0}
+  dt{font-family:var(--mono);font-size:13px;letter-spacing:.1em;color:var(--blue);margin-bottom:8px}
+  dd{margin:0;font-size:15px;line-height:1.7;opacity:.8}
+  .end{font-family:var(--mono);font-size:12px;letter-spacing:.2em;opacity:.45;margin-top:60px}
+
+  /* 入场 */
+  .rv{opacity:0;transform:translateY(20px)}
+  .rv.in{opacity:1;transform:none;transition:opacity .8s ease,transform .8s cubic-bezier(.2,.7,.2,1);transition-delay:var(--d,0s)}
+  @media (prefers-reduced-motion:reduce){
+    .rv,.rv.in{opacity:1;transform:none;transition:none}
+    html{scroll-behavior:auto}
+    .pulse{animation:none!important}
+  }
+  .pulse{animation:pulse 2.6s ease-in-out infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+</style>
+<!-- eli5:head:start -->
+<link rel="alternate" hreflang="en" href="paged-attention-explainer.en.html">
+<link rel="alternate" hreflang="zh-CN" href="paged-attention-explainer.zh-CN.html">
+<link rel="stylesheet" href="language.css">
+<script src="language.js" defer></script>
+<!-- eli5:head:end -->
+</head>
+<body>
+<!-- eli5:nav:start -->
+<div class="eli5-site-nav" role="navigation" aria-label="图解导航与语言选择">
+  <a class="eli5-nav-home" href="index.html?lang=zh-CN">← 图解目录</a>
+  <div class="eli5-languages">
+    <a href="paged-attention-explainer.zh-CN.html" data-language="zh-CN" lang="zh-CN" hreflang="zh-CN" aria-current="page">简体中文</a>
+    <a href="paged-attention-explainer.en.html" data-language="en" lang="en" hreflang="en">English</a>
+  </div>
+</div>
+<!-- eli5:nav:end -->
+
+<div class="wrap">
+
+<header>
+  <p class="eyebrow rv">PAGEDATTENTION · vLLM</p>
+  <h1 class="rv" style="--d:.08s">同一张显卡，<br>为什么能多接<em> 4 倍</em>的活？</h1>
+  <p class="lede rv" style="--d:.16s">因为有人把显存，从"一排固定的座位"，改成了"一本可以随便翻页的书"。</p>
+</header>
+
+<!-- 01 -->
+<section>
+  <div class="folio rv"><b>01</b><span></span>模型的记事本</div>
+  <h2 class="rv" style="--d:.05s">每写一个字，<br>都要先<mark>翻一遍前面</mark>。</h2>
+  <p class="say rv" style="--d:.1s">为了不用每次重读，模型把读过的内容记成笔记，堆在显存里。这本笔记叫 KV Cache。写得越长，笔记越厚。</p>
+
+  <div class="fig rv" style="--d:.15s">
+  <svg viewBox="0 0 820 300" role="img" aria-label="模型生成新字时要回看前面所有的笔记">
+    <!-- 已经写下的字 -->
+    <g class="ov">
+      <rect x="0" y="20" width="72" height="72" fill="var(--blue)" opacity=".9"/>
+      <rect x="88" y="20" width="72" height="72" fill="var(--blue)" opacity=".9"/>
+      <rect x="176" y="20" width="72" height="72" fill="var(--blue)" opacity=".9"/>
+      <rect x="264" y="20" width="72" height="72" fill="var(--blue)" opacity=".9"/>
+    </g>
+    <text x="36" y="66" text-anchor="middle" class="cjk" fill="var(--paper)" font-size="30">今</text>
+    <text x="124" y="66" text-anchor="middle" class="cjk" fill="var(--paper)" font-size="30">天</text>
+    <text x="212" y="66" text-anchor="middle" class="cjk" fill="var(--paper)" font-size="30">天</text>
+    <text x="300" y="66" text-anchor="middle" class="cjk" fill="var(--paper)" font-size="30">气</text>
+
+    <!-- 正在写的字 -->
+    <rect x="384" y="20" width="72" height="72" fill="none" stroke="var(--pink)" stroke-width="3" stroke-dasharray="7 6" class="pulse"/>
+    <text x="420" y="66" text-anchor="middle" class="cjk" fill="var(--pink)" font-size="30">?</text>
+    <text x="420" y="-2" text-anchor="middle" class="lab-sm" fill="var(--pink)">下一个</text>
+
+    <!-- 回看的箭头 -->
+    <g stroke="var(--pink)" stroke-width="2.5" fill="none" class="ov">
+      <path d="M400 108 C 360 160, 80 150, 40 186"/>
+      <path d="M404 108 C 380 160, 168 150, 128 186"/>
+      <path d="M410 108 C 396 158, 256 152, 216 186"/>
+      <path d="M416 108 C 412 156, 344 154, 304 186"/>
+    </g>
+
+    <!-- 笔记 -->
+    <g class="ov">
+      <rect x="8" y="190" width="60" height="46" fill="var(--yellow)"/>
+      <rect x="96" y="190" width="60" height="46" fill="var(--yellow)"/>
+      <rect x="184" y="190" width="60" height="46" fill="var(--yellow)"/>
+      <rect x="272" y="190" width="60" height="46" fill="var(--yellow)"/>
+    </g>
+    <g class="lab-sm" text-anchor="middle">
+      <text x="38" y="219">K V</text><text x="126" y="219">K V</text>
+      <text x="214" y="219">K V</text><text x="302" y="219">K V</text>
+    </g>
+    <text x="8" y="272" class="lab" fill="var(--blue)">KV 缓存 ↑ 存在 GPU 显存里</text>
+  </svg>
+  </div>
+</section>
+
+<!-- 02 -->
+<section>
+  <div class="folio rv"><b>02</b><span></span>老办法的毛病</div>
+  <h2 class="rv" style="--d:.05s">不知道会写多长，<br>就先<mark>占一整排座位</mark>。</h2>
+  <p class="say rv" style="--d:.1s">笔记必须连成一片放，所以按"最长可能写多少"提前占好。结果大部分座位空着，别人还坐不进来。</p>
+
+  <div class="fig rv" style="--d:.15s">
+  <svg viewBox="0 0 820 330" role="img" aria-label="每个请求预留一整段连续显存，大部分空置">
+    <defs>
+      <pattern id="hatch" width="10" height="10" patternTransform="rotate(45)" patternUnits="userSpaceOnUse">
+        <line x1="0" y1="0" x2="0" y2="10" stroke="var(--ghost)" stroke-width="5"/>
+      </pattern>
+    </defs>
+    <g class="lab-sm">
+      <text x="0" y="34">请求 A</text><text x="0" y="124">请求 B</text><text x="0" y="214">请求 C</text>
+    </g>
+    <!-- 三条预留区 -->
+    <g>
+      <rect x="80" y="10" width="700" height="46" fill="url(#hatch)" stroke="var(--rule)"/>
+      <rect x="80" y="100" width="700" height="46" fill="url(#hatch)" stroke="var(--rule)"/>
+      <rect x="80" y="190" width="700" height="46" fill="url(#hatch)" stroke="var(--rule)"/>
+    </g>
+    <!-- 真正用到的部分 -->
+    <g class="ov" fill="var(--blue)">
+      <rect x="80" y="10" width="132" height="46"/>
+      <rect x="80" y="100" width="76" height="46"/>
+      <rect x="80" y="190" width="188" height="46"/>
+    </g>
+    <text x="86" y="80" class="lab-sm" fill="var(--blue)">实际用到</text>
+    <text x="300" y="80" class="lab-sm">↑ 空着，也让不出去</text>
+
+    <g class="ov">
+      <rect x="80" y="272" width="700" height="10" fill="var(--ghost)"/>
+      <rect x="80" y="272" width="182" height="10" fill="var(--pink)"/>
+    </g>
+    <text x="80" y="316" class="big" fill="var(--pink)">60–80%</text>
+    <text x="330" y="316" class="cjk" opacity=".75">的显存，就这样浪费掉了</text>
+  </svg>
+  </div>
+</section>
+
+<!-- 03 -->
+<section>
+  <div class="folio rv"><b>03</b><span></span>借来的老主意</div>
+  <h2 class="rv" style="--d:.05s">这道题，<br>操作系统<mark>六十年前就做过</mark>。</h2>
+  <p class="say rv" style="--d:.1s">电脑的办法叫"分页"：把内存切成一小格一小格，程序看到的是整齐的一排，实际存放东西的位置东一块西一块——中间靠一张表来对应。</p>
+
+  <div class="fig rv" style="--d:.15s">
+  <svg viewBox="0 0 820 300" role="img" aria-label="操作系统分页：逻辑页经页表映射到零散的物理内存">
+    <text x="0" y="18" class="lab-sm">程序看到的</text>
+    <text x="300" y="18" class="lab-sm">一张对照表</text>
+    <text x="560" y="18" class="lab-sm">真实的内存</text>
+
+    <g class="ov" fill="var(--blue)">
+      <rect x="0" y="34" width="150" height="42"/>
+      <rect x="0" y="84" width="150" height="42"/>
+      <rect x="0" y="134" width="150" height="42"/>
+      <rect x="0" y="184" width="150" height="42"/>
+    </g>
+    <g class="lab" fill="var(--paper)">
+      <text x="16" y="61">页 1</text><text x="16" y="111">页 2</text>
+      <text x="16" y="161">页 3</text><text x="16" y="211">页 4</text>
+    </g>
+
+    <rect x="300" y="34" width="150" height="192" fill="none" stroke="var(--ink)" stroke-width="1.5"/>
+    <g class="lab-sm" fill="var(--ink)">
+      <text x="318" y="61">1 → 07</text><text x="318" y="111">2 → 02</text>
+      <text x="318" y="161">3 → 11</text><text x="318" y="211">4 → 05</text>
+    </g>
+    <g stroke="var(--ink)" stroke-width="1.5" opacity=".45">
+      <path d="M150 55 H300" /><path d="M150 105 H300"/><path d="M150 155 H300"/><path d="M150 205 H300"/>
+    </g>
+
+    <!-- 物理内存格子 4x4 -->
+    <g>
+      <g fill="none" stroke="var(--rule)">
+        <rect x="560" y="34" width="56" height="46"/><rect x="622" y="34" width="56" height="46"/>
+        <rect x="684" y="34" width="56" height="46"/><rect x="746" y="34" width="56" height="46"/>
+        <rect x="560" y="86" width="56" height="46"/><rect x="622" y="86" width="56" height="46"/>
+        <rect x="684" y="86" width="56" height="46"/><rect x="746" y="86" width="56" height="46"/>
+        <rect x="560" y="138" width="56" height="46"/><rect x="622" y="138" width="56" height="46"/>
+        <rect x="684" y="138" width="56" height="46"/><rect x="746" y="138" width="56" height="46"/>
+        <rect x="560" y="190" width="56" height="46"/><rect x="622" y="190" width="56" height="46"/>
+        <rect x="684" y="190" width="56" height="46"/><rect x="746" y="190" width="56" height="46"/>
+      </g>
+      <g class="ov" fill="var(--blue)">
+        <rect x="684" y="86" width="56" height="46"/>
+        <rect x="622" y="34" width="56" height="46"/>
+        <rect x="622" y="138" width="56" height="46"/>
+        <rect x="746" y="86" width="56" height="46"/>
+      </g>
+    </g>
+    <text x="560" y="264" class="cjk" opacity=".75">位置零散，但一格都不浪费</text>
+  </svg>
+  </div>
+</section>
+
+<!-- 04 -->
+<section>
+  <div class="folio rv"><b>04</b><span></span>PagedAttention</div>
+  <h2 class="rv" style="--d:.05s">把笔记<mark>撕成小块</mark>，<br>用一块，拿一块。</h2>
+  <p class="say rv" style="--d:.1s">这个例子中，一块固定装 16 个词元。写满了再申请下一块，位置不用挨着。谁的哪一块在哪儿，一张"块表"记着。</p>
+
+  <div class="fig rv" style="--d:.15s">
+  <svg viewBox="0 0 820 330" role="img" aria-label="KV Cache 被切成固定大小的块，分散存放，由块表索引">
+    <text x="0" y="18" class="lab-sm">请求 A 的笔记</text>
+    <text x="470" y="18" class="lab-sm">显存里的块</text>
+
+    <g class="ov" fill="var(--blue)">
+      <rect x="0" y="34" width="104" height="40"/>
+      <rect x="0" y="82" width="104" height="40"/>
+      <rect x="0" y="130" width="104" height="40"/>
+    </g>
+    <g class="lab-sm" fill="var(--paper)">
+      <text x="12" y="59">块 1</text><text x="12" y="107">块 2</text><text x="12" y="155">块 3</text>
+    </g>
+    <rect x="0" y="178" width="104" height="40" fill="none" stroke="var(--pink)" stroke-width="2.5" stroke-dasharray="6 5" class="pulse"/>
+    <text x="12" y="203" class="lab-sm" fill="var(--pink)">再要一块</text>
+
+    <text x="140" y="59" class="lab-sm">16 字</text>
+    <text x="140" y="107" class="lab-sm">16 字</text>
+    <text x="140" y="155" class="lab-sm">6 字 · 没满</text>
+
+    <!-- 块表 -->
+    <rect x="250" y="34" width="150" height="136" fill="none" stroke="var(--ink)" stroke-width="1.5"/>
+    <text x="250" y="24" class="lab-sm" fill="var(--blue)">块表</text>
+    <g class="lab-sm">
+      <text x="266" y="62">1 → 09</text><text x="266" y="110">2 → 03</text><text x="266" y="158">3 → 14</text>
+    </g>
+    <g stroke="var(--ink)" stroke-width="1.5" opacity=".4">
+      <path d="M104 54 H250"/><path d="M104 102 H250"/><path d="M104 150 H250"/>
+    </g>
+
+    <!-- 显存格 5x4 -->
+    <g fill="none" stroke="var(--rule)">
+      <rect x="470" y="34" width="62" height="40"/><rect x="538" y="34" width="62" height="40"/><rect x="606" y="34" width="62" height="40"/><rect x="674" y="34" width="62" height="40"/><rect x="742" y="34" width="62" height="40"/>
+      <rect x="470" y="82" width="62" height="40"/><rect x="538" y="82" width="62" height="40"/><rect x="606" y="82" width="62" height="40"/><rect x="674" y="82" width="62" height="40"/><rect x="742" y="82" width="62" height="40"/>
+      <rect x="470" y="130" width="62" height="40"/><rect x="538" y="130" width="62" height="40"/><rect x="606" y="130" width="62" height="40"/><rect x="674" y="130" width="62" height="40"/><rect x="742" y="130" width="62" height="40"/>
+      <rect x="470" y="178" width="62" height="40"/><rect x="538" y="178" width="62" height="40"/><rect x="606" y="178" width="62" height="40"/><rect x="674" y="178" width="62" height="40"/><rect x="742" y="178" width="62" height="40"/>
+    </g>
+    <g class="ov" fill="var(--blue)">
+      <rect x="606" y="34" width="62" height="40"/>
+      <rect x="470" y="130" width="62" height="40"/>
+      <rect x="742" y="82" width="62" height="40"/>
+    </g>
+    <!-- 别的请求 -->
+    <g class="ov" fill="var(--yellow)">
+      <rect x="538" y="34" width="62" height="40"/>
+      <rect x="674" y="130" width="62" height="40"/>
+      <rect x="538" y="178" width="62" height="40"/>
+      <rect x="742" y="178" width="62" height="40"/>
+    </g>
+    <text x="470" y="240" class="lab-sm">■ 请求 A　　■ 别的请求　　□ 空着，随时能给任何人</text>
+
+    <text x="0" y="304" class="big" fill="var(--pink)">&lt; 4%</text>
+    <text x="180" y="304" class="cjk" opacity=".75">浪费只剩最后那一块没填满的地方</text>
+  </svg>
+  </div>
+</section>
+
+<!-- 05 -->
+<section>
+  <div class="folio rv"><b>05</b><span></span>顺手的好处</div>
+  <h2 class="rv" style="--d:.05s">开头一样的话，<br><mark>只存一份</mark>。</h2>
+  <p class="say rv" style="--d:.1s">同一个提示词生成三个候选答案？三个人共用开头那几块笔记，谁要改，才单独复制一份给他。</p>
+
+  <div class="fig rv" style="--d:.15s">
+  <svg viewBox="0 0 820 280" role="img" aria-label="多个输出共享同一段前缀的 KV 块，分叉后才复制">
+    <text x="0" y="18" class="lab-sm">共用的提示词</text>
+    <g class="ov" fill="var(--blue)">
+      <rect x="0" y="34" width="86" height="52"/>
+      <rect x="96" y="34" width="86" height="52"/>
+      <rect x="192" y="34" width="86" height="52"/>
+    </g>
+    <text x="60" y="112" class="lab-sm" fill="var(--blue)">1 份，不是 3 份</text>
+
+    <g stroke="var(--ink)" stroke-width="2" fill="none" opacity=".5">
+      <path d="M278 60 C 330 60, 330 -6, 382 -6"/>
+      <path d="M278 60 H382"/>
+      <path d="M278 60 C 330 60, 330 126, 382 126"/>
+    </g>
+
+    <g class="ov" fill="var(--pink)">
+      <rect x="392" y="-32" width="86" height="52"/><rect x="488" y="-32" width="86" height="52"/>
+      <rect x="392" y="34" width="86" height="52"/><rect x="488" y="34" width="86" height="52"/>
+      <rect x="392" y="100" width="86" height="52"/><rect x="488" y="100" width="86" height="52"/>
+    </g>
+    <g class="lab-sm">
+      <text x="596" y="0">答案 1</text><text x="596" y="66">答案 2</text><text x="596" y="132">答案 3</text>
+    </g>
+    <text x="392" y="188" class="lab-sm" fill="var(--pink)">分叉之后，才各写各的</text>
+
+    <text x="0" y="252" class="cjk" opacity=".75">写时复制（copy-on-write）——省下的又是一大片显存。</text>
+  </svg>
+  </div>
+</section>
+
+<!-- 06 -->
+<section>
+  <div class="folio rv"><b>06</b><span></span>结果</div>
+  <h2 class="rv" style="--d:.05s">省下的地方，<br>换成<mark>同时在服务的人</mark>。</h2>
+  <p class="say rv" style="--d:.1s">显存不浪费，一张卡就能同时塞下更多请求一起算。vLLM 是采用这套做法的开源推理引擎，用来提供大模型推理服务。</p>
+
+  <div class="fig rv" style="--d:.15s">
+  <svg viewBox="0 0 820 230" role="img" aria-label="同样显存下并发请求数的对比">
+    <text x="0" y="20" class="lab-sm">老办法 · 同时能服务</text>
+    <g class="ov" fill="var(--ghost)">
+      <rect x="0" y="34" width="34" height="34"/><rect x="42" y="34" width="34" height="34"/>
+      <rect x="84" y="34" width="34" height="34"/><rect x="126" y="34" width="34" height="34"/>
+    </g>
+    <text x="0" y="128" class="lab-sm" fill="var(--pink)">vLLM · 同时能服务</text>
+    <g class="ov" fill="var(--pink)">
+      <rect x="0" y="142" width="34" height="34"/><rect x="42" y="142" width="34" height="34"/>
+      <rect x="84" y="142" width="34" height="34"/><rect x="126" y="142" width="34" height="34"/>
+      <rect x="168" y="142" width="34" height="34"/><rect x="210" y="142" width="34" height="34"/>
+      <rect x="252" y="142" width="34" height="34"/><rect x="294" y="142" width="34" height="34"/>
+      <rect x="336" y="142" width="34" height="34"/><rect x="378" y="142" width="34" height="34"/>
+      <rect x="420" y="142" width="34" height="34"/><rect x="462" y="142" width="34" height="34"/>
+      <rect x="504" y="142" width="34" height="34"/><rect x="546" y="142" width="34" height="34"/>
+      <rect x="588" y="142" width="34" height="34"/><rect x="630" y="142" width="34" height="34"/>
+    </g>
+  </svg>
+  </div>
+
+  <div class="stat">
+    <div class="card pk rv"><b>2–4×</b><span>同样的等待时间，吞吐量</span></div>
+    <div class="card bl rv" style="--d:.08s"><b>16</b><span>一块笔记装几个字（可调）</span></div>
+    <div class="card rv" style="--d:.16s"><b>2023</b><span>PagedAttention 论文发表</span></div>
+  </div>
+</section>
+
+<footer>
+  <p class="eyebrow">三个名词</p>
+  <dl>
+    <div>
+      <dt>KV 缓存</dt>
+      <dd>模型的笔记本。写过的每个字都在里面留一条，好让后面不用重读。它就是显存的主要消耗者。</dd>
+    </div>
+    <div>
+      <dt>PAGEDATTENTION</dt>
+      <dd>把这本笔记切成固定大小的小块、分散存放、用一张表索引的办法。名字里的 "Paged" 就是从操作系统分页借来的。</dd>
+    </div>
+    <div>
+      <dt>vLLM</dt>
+      <dd>用上这套办法的开源推理引擎。你调用的很多开源模型 API，背后跑的就是它。</dd>
+    </div>
+  </dl>
+  <p class="end">结束 · 一本可以随便翻页的显存</p>
+</footer>
+
+</div>
+
+<script>
+  const io = new IntersectionObserver((es)=>{
+    es.forEach(e=>{ if(e.isIntersecting){ e.target.classList.add('in'); io.unobserve(e.target); } });
+  },{threshold:.12, rootMargin:'0px 0px -8% 0px'});
+  document.querySelectorAll('.rv').forEach(el=>io.observe(el));
+</script>
+</body>
+</html>

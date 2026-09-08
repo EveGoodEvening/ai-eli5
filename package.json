@@ -1,0 +1,12 @@
+{
+  "name": "ai-eli5",
+  "private": true,
+  "scripts": {
+    "prepare-pages": "node scripts/prepare-pages.mjs",
+    "check": "node scripts/prepare-pages.mjs --check && node scripts/check-pages.mjs",
+    "test": "npm run check && node tests/languages.mjs"
+  },
+  "devDependencies": {
+    "playwright": "1.63.0"
+  }
+}

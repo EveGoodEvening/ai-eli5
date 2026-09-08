@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>图解递归自我改进</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,700;12..96,800&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:#E9EBF2;
+  --ink:#0F1A3C;
+  --blue:#2340C8;
+  --pink:#FF4D93;
+  --dim:#6A7291;
+  --display:"Bricolage Grotesque","Space Grotesk",system-ui,sans-serif;
+  --body:"Space Grotesk",system-ui,-apple-system,sans-serif;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  margin:0;background:var(--paper);color:var(--ink);font-family:var(--body);
+  -webkit-font-smoothing:antialiased;overflow-x:hidden;
+}
+/* paper grain */
+body::after{
+  content:"";position:fixed;inset:0;pointer-events:none;z-index:99;opacity:.16;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
+  mix-blend-mode:multiply;
+}
+.wrap{max-width:960px;margin:0 auto;padding:0 24px}
+
+/* ---------- hero ---------- */
+header{padding:14vh 0 8vh;position:relative}
+.eyebrow{
+  font-family:var(--body);font-size:.72rem;letter-spacing:.34em;text-transform:uppercase;
+  color:var(--blue);font-weight:700;margin:0 0 22px;
+}
+h1{
+  font-family:var(--display);font-weight:800;line-height:.92;letter-spacing:-.035em;
+  font-size:clamp(2.9rem,10.5vw,7.2rem);margin:0;max-width:14ch;
+}
+h1 em{font-style:normal;color:var(--pink);position:relative}
+.sub{font-size:clamp(1.05rem,2.6vw,1.5rem);color:var(--dim);margin:28px 0 0;max-width:24ch}
+.scrollcue{margin-top:56px;font-size:.72rem;letter-spacing:.3em;text-transform:uppercase;color:var(--dim)}
+.scrollcue span{display:inline-block;animation:bob 1.8s ease-in-out infinite}
+@keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(7px)}}
+
+/* ---------- panels ---------- */
+section{padding:9vh 0;border-top:2px solid var(--ink)}
+.num{
+  font-family:var(--body);font-weight:700;font-size:.75rem;letter-spacing:.28em;
+  color:var(--blue);margin:0 0 18px;
+}
+h2{
+  font-family:var(--display);font-weight:700;letter-spacing:-.025em;line-height:1.02;
+  font-size:clamp(1.9rem,5.6vw,3.4rem);margin:0 0 8px;max-width:17ch;
+}
+.note{color:var(--dim);font-size:clamp(.95rem,2.2vw,1.1rem);margin:14px 0 0;max-width:34ch}
+.art{margin-top:44px}
+svg{display:block;width:100%;height:auto;overflow:visible}
+
+/* reveal */
+.rise{opacity:0;transform:translateY(26px);transition:opacity .7s ease,transform .7s cubic-bezier(.2,.7,.3,1)}
+.rise.in{opacity:1;transform:none}
+
+/* riso off-register shadow */
+.reg{transform:translate(5px,5px);opacity:.85}
+
+.gear{transform-origin:center;animation:spin 6s linear infinite}
+.gear.fast{animation-duration:2.4s}
+.gear.faster{animation-duration:1s}
+.gear.rev{animation-direction:reverse}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+.lbl{font-family:var(--body);font-size:13px;font-weight:700;fill:var(--ink)}
+.lbl.q{fill:var(--dim);font-weight:500}
+.big{font-family:var(--display);font-weight:800;font-size:26px;fill:var(--ink)}
+
+/* curve draw-on */
+.curve{stroke-dasharray:900;stroke-dashoffset:900;transition:stroke-dashoffset 2.6s cubic-bezier(.85,0,.9,.35) .2s}
+.in .curve{stroke-dashoffset:0}
+
+/* cards */
+.cards{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:40px}
+.card{border:2px solid var(--ink);padding:26px 22px;background:transparent}
+.card.hope{box-shadow:6px 6px 0 var(--blue)}
+.card.worry{box-shadow:6px 6px 0 var(--pink)}
+.card h3{font-family:var(--display);font-size:1.15rem;margin:0 0 10px;letter-spacing:-.01em}
+.card p{margin:0;color:var(--dim);font-size:.98rem;line-height:1.5}
+@media(max-width:620px){.cards{grid-template-columns:1fr}}
+
+.define{
+  border:2px solid var(--ink);background:var(--ink);color:var(--paper);
+  padding:clamp(28px,6vw,54px);margin-top:10px;
+}
+.define p{
+  font-family:var(--display);font-weight:700;letter-spacing:-.02em;line-height:1.12;
+  font-size:clamp(1.5rem,4.4vw,2.5rem);margin:0;
+}
+.define span{color:var(--pink)}
+
+footer{border-top:2px solid var(--ink);padding:7vh 0 12vh;color:var(--dim);font-size:.9rem}
+footer b{color:var(--ink);font-weight:700}
+
+@media (prefers-reduced-motion:reduce){
+  *{animation:none!important;transition:none!important}
+  .rise{opacity:1;transform:none}
+  .curve{stroke-dashoffset:0}
+  html{scroll-behavior:auto}
+}
+
+html[lang="zh-CN"] body{font-family:"PingFang SC","Microsoft YaHei","Noto Sans CJK SC",system-ui,sans-serif}
+html[lang="zh-CN"] h1,html[lang="zh-CN"] h2,html[lang="zh-CN"] h3{line-height:1.2;letter-spacing:0}
+</style>
+<!-- eli5:head:start -->
+<link rel="alternate" hreflang="en" href="recursive-self-improvement.en.html">
+<link rel="alternate" hreflang="zh-CN" href="recursive-self-improvement.zh-CN.html">
+<link rel="stylesheet" href="language.css">
+<script src="language.js" defer></script>
+<!-- eli5:head:end -->
+</head>
+<body>
+<!-- eli5:nav:start -->
+<div class="eli5-site-nav" role="navigation" aria-label="图解导航与语言选择">
+  <a class="eli5-nav-home" href="index.html?lang=zh-CN">← 图解目录</a>
+  <div class="eli5-languages">
+    <a href="recursive-self-improvement.zh-CN.html" data-language="zh-CN" lang="zh-CN" hreflang="zh-CN" aria-current="page">简体中文</a>
+    <a href="recursive-self-improvement.en.html" data-language="en" lang="en" hreflang="en">English</a>
+  </div>
+</div>
+<!-- eli5:nav:end -->
+
+<!-- reusable robot -->
+<svg style="position:absolute;width:0;height:0" aria-hidden="true">
+  <symbol id="bot" viewBox="0 0 100 124">
+    <g fill="none" stroke="currentColor" stroke-width="3.4" stroke-linejoin="round">
+      <circle cx="50" cy="7" r="4.5" fill="currentColor" stroke="none"/>
+      <path d="M50 11 V21"/>
+      <rect x="29" y="21" width="42" height="29" rx="7" fill="var(--paper)"/>
+      <circle cx="41" cy="35" r="3.6" fill="currentColor" stroke="none"/>
+      <circle cx="59" cy="35" r="3.6" fill="currentColor" stroke="none"/>
+      <path d="M46 50 h8 v5 h-8z" fill="var(--paper)"/>
+      <rect x="21" y="55" width="58" height="48" rx="9" fill="var(--paper)"/>
+      <rect x="6" y="59" width="13" height="34" rx="6.5" fill="var(--paper)"/>
+      <rect x="81" y="59" width="13" height="34" rx="6.5" fill="var(--paper)"/>
+      <rect x="30" y="103" width="13" height="18" rx="5" fill="var(--paper)"/>
+      <rect x="57" y="103" width="13" height="18" rx="5" fill="var(--paper)"/>
+    </g>
+  </symbol>
+  <symbol id="gear" viewBox="-20 -20 40 40">
+    <g fill="currentColor">
+      <rect x="-15" y="-3.2" width="30" height="6.4" rx="2"/>
+      <rect x="-15" y="-3.2" width="30" height="6.4" rx="2" transform="rotate(45)"/>
+      <rect x="-15" y="-3.2" width="30" height="6.4" rx="2" transform="rotate(90)"/>
+      <rect x="-15" y="-3.2" width="30" height="6.4" rx="2" transform="rotate(135)"/>
+      <circle r="10.5"/>
+    </g>
+    <circle r="4" fill="var(--paper)"/>
+  </symbol>
+</svg>
+
+<div class="wrap">
+
+<header>
+  <p class="eyebrow">递归自我改进</p>
+  <h1>一台能够造出 <em>更强</em> 机器的机器。</h1>
+  <p class="sub">接着，新机器再做同样的事。</p>
+  <p class="scrollcue"><span>向下滚动 ↓</span></p>
+</header>
+
+<!-- 01 -->
+<section class="rise">
+  <p class="num">01</p>
+  <h2>先有一台机器，擅长一件事：制造机器。</h2>
+  <div class="art">
+    <svg viewBox="0 0 700 260" role="img" aria-label="一个机器人站在齿轮旁，手拿扳手">
+      <g class="reg" style="color:var(--pink)"><use href="#bot" x="60" y="30" width="130" height="161"/></g>
+      <g style="color:var(--ink)"><use href="#bot" x="60" y="30" width="130" height="161"/></g>
+      <g style="color:var(--blue)" transform="translate(330,110)"><g class="gear"><use href="#gear" x="-20" y="-20" width="40" height="40"/></g></g>
+      <g style="color:var(--blue)" transform="translate(374,138)"><g class="gear rev"><use href="#gear" x="-20" y="-20" width="40" height="40"/></g></g>
+      <text class="lbl" x="440" y="118" font-size="20">它能制造东西</text>
+      <text class="lbl q" x="440" y="146" font-size="18">……也包括机器</text>
+    </svg>
+  </div>
+</section>
+
+<!-- 02 -->
+<section class="rise">
+  <p class="num">02</p>
+  <h2>于是，让它改进自己。</h2>
+  <p class="note">第 1 版设计出第 2 版。第 2 版比它更好一点。</p>
+  <div class="art">
+    <svg viewBox="0 0 700 300" role="img" aria-label="第 1 版机器人正在制造体型稍大的第 2 版机器人">
+      <g class="reg" style="color:var(--pink)"><use href="#bot" x="40" y="90" width="120" height="149"/></g>
+      <g style="color:var(--ink)"><use href="#bot" x="40" y="90" width="120" height="149"/></g>
+      <text class="lbl" x="72" y="270" font-size="18">v1</text>
+
+      <path d="M195 175 H305" stroke="var(--blue)" stroke-width="5" fill="none"/>
+      <path d="M290 162 l18 13 -18 13" stroke="var(--blue)" stroke-width="5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+      <text class="lbl" x="205" y="155" fill="var(--blue)">制造</text>
+
+      <g class="reg" style="color:var(--pink)"><use href="#bot" x="340" y="55" width="155" height="192"/></g>
+      <g style="color:var(--ink)"><use href="#bot" x="340" y="55" width="155" height="192"/></g>
+      <text class="lbl" x="382" y="270" font-size="18">v2</text>
+      <g style="color:var(--blue)" transform="translate(575,150)"><g class="gear fast"><use href="#gear" x="-20" y="-20" width="40" height="40"/></g></g>
+      <text class="lbl q" x="545" y="205" font-size="16">更好一点</text>
+    </svg>
+  </div>
+</section>
+
+<!-- 03 -->
+<section class="rise">
+  <p class="num">03</p>
+  <h2>关键在于：它改进的，恰好是自己制造机器的本领。</h2>
+  <p class="note">第 2 版不光工作能力更强，也更擅长制造。因此第 3 版出现得更快，进步也更大。</p>
+  <div class="art">
+    <svg viewBox="0 0 700 300" role="img" aria-label="机器人依次变大，每一代都在制造下一代">
+      <g style="color:var(--ink)"><use href="#bot" x="20" y="140" width="86" height="107"/></g>
+      <text class="lbl" x="48" y="270" font-size="16">v1</text>
+      <path d="M120 195 H175" stroke="var(--blue)" stroke-width="4" fill="none"/>
+      <path d="M164 186 l13 9 -13 9" stroke="var(--blue)" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+
+      <g style="color:var(--ink)"><use href="#bot" x="190" y="110" width="112" height="139"/></g>
+      <text class="lbl" x="230" y="272" font-size="16">v2</text>
+      <path d="M316 195 H371" stroke="var(--blue)" stroke-width="4" fill="none"/>
+      <path d="M360 186 l13 9 -13 9" stroke="var(--blue)" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+
+      <g class="reg" style="color:var(--pink)"><use href="#bot" x="386" y="58" width="152" height="189"/></g>
+      <g style="color:var(--ink)"><use href="#bot" x="386" y="58" width="152" height="189"/></g>
+      <text class="lbl" x="448" y="272" font-size="16">v3</text>
+
+      <path d="M552 195 H607" stroke="var(--pink)" stroke-width="4" fill="none" stroke-dasharray="9 8"/>
+      <path d="M596 186 l13 9 -13 9" stroke="var(--pink)" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+      <text class="big" x="622" y="205" fill="var(--pink)">v4</text>
+    </svg>
+  </div>
+</section>
+
+<!-- 04 loop : signature -->
+<section class="rise">
+  <p class="num">04</p>
+  <h2>这样就形成了一个自我推动的循环。</h2>
+  <p class="note">每转一圈，下一圈都可能更快。</p>
+  <div class="art">
+    <svg viewBox="0 0 700 400" role="img" aria-label="一个循环：制造更强的版本，新版本更擅长制造，所以下一版更快出现">
+      <g transform="translate(350,200)">
+        <circle r="128" fill="none" stroke="var(--ink)" stroke-width="2" stroke-dasharray="4 9" opacity=".45"/>
+        <circle r="128" fill="none" stroke="var(--blue)" stroke-width="6" stroke-linecap="round"
+                stroke-dasharray="150 654" opacity=".25"/>
+
+        <g style="color:var(--ink)"><use href="#bot" x="-42" y="-52" width="84" height="104"/></g>
+
+        <!-- travelling spark: laps speed up -->
+        <circle r="11" fill="var(--pink)">
+          <animateMotion dur="7s" repeatCount="indefinite"
+            keyPoints="0;1;0;1;0;1;0;1" keyTimes="0;0.42;0.42;0.71;0.71;0.9;0.9;1" calcMode="linear"
+            path="M0,-128 A128,128 0 1,1 -0.1,-128"/>
+        </circle>
+
+        <!-- arrowheads on the ring -->
+        <path d="M0,-128 l-11,-9 l0,18 z" fill="var(--ink)" transform="rotate(90) translate(0,0)"/>
+      </g>
+
+      <text class="lbl" x="350" y="34" text-anchor="middle" font-size="18">造出更强的版本</text>
+      <text class="lbl" x="648" y="300" text-anchor="end" font-size="18">新版本又更擅长制造</text>
+      <text class="lbl" x="52" y="300" font-size="18">所以下一版</text>
+      <text class="lbl" x="52" y="324" font-size="18">出现得更快</text>
+    </svg>
+  </div>
+</section>
+
+<!-- 05 curve -->
+<section class="rise">
+  <p class="num">05</p>
+  <h2>起初波澜不惊，后来突飞猛进。</h2>
+  <p class="note">每一步都比上一步大一点。这条曲线会平缓很久，然后几乎直线上升。</p>
+  <div class="art">
+    <svg viewBox="0 0 700 340" role="img" aria-label="一条长时间平缓、随后几乎垂直上升的曲线">
+      <path d="M60 290 H660" stroke="var(--ink)" stroke-width="2.5"/>
+      <path d="M60 290 V30" stroke="var(--ink)" stroke-width="2.5"/>
+      <text class="lbl q" x="660" y="318" text-anchor="end" font-size="15">时间 →</text>
+      <text class="lbl q" x="46" y="40" text-anchor="end" font-size="15" transform="rotate(-90 46 40)">能力强弱</text>
+
+      <path class="curve" d="M62 288 C 240 286, 380 278, 470 250 S 570 150, 585 34"
+            fill="none" stroke="var(--pink)" stroke-width="8" stroke-linecap="round"/>
+      <g style="color:var(--ink)"><use href="#bot" x="120" y="228" width="42" height="52"/></g>
+      <g style="color:var(--ink)"><use href="#bot" x="430" y="196" width="56" height="70"/></g>
+      <g class="reg" style="color:var(--blue)"><use href="#bot" x="586" y="14" width="92" height="114"/></g>
+      <g style="color:var(--ink)"><use href="#bot" x="586" y="14" width="92" height="114"/></g>
+    </svg>
+  </div>
+</section>
+
+<!-- 06 definition -->
+<section class="rise">
+  <p class="num">06</p>
+  <h2>核心思路就是这样。</h2>
+  <div class="define">
+    <p>一次改进， <span>增强了</span> 执行改进的系统本身。</p>
+  </div>
+</section>
+
+<!-- 07 -->
+<section class="rise">
+  <p class="num">07</p>
+  <h2>这也是它引发争论的原因。</h2>
+  <div class="cards">
+    <div class="card hope">
+      <h3>人们的期待</h3>
+      <p>疾病、材料、能源等可能需要人类研究几个世纪的难题，能迅速得到解决。</p>
+    </div>
+    <div class="card worry">
+      <h3>人们的担忧</h3>
+      <p>如果它加速得比人们检查的速度还快，大家可能来不及发现错误，更来不及阻止。</p>
+    </div>
+  </div>
+</section>
+
+<!-- 08 -->
+<section class="rise">
+  <p class="num">08</p>
+  <h2>这真的发生过吗？</h2>
+  <p class="note">较小规模的类似现象已经存在，比如通过自我对弈训练的国际象棋程序，或用于构建更好编译器的编译器。但机器自行不断加速、能力飞速增长的剧烈版本，尚未被观察到。这是一种预测；它会不会出现、会有多快，专家之间仍存在很大分歧。</p>
+  <div class="art">
+    <svg viewBox="0 0 700 190" role="img" aria-label="两个旋转的齿轮：小齿轮代表已经实现，大齿轮代表仍不确定">
+      <g style="color:var(--blue)" transform="translate(120,85)"><g class="gear"><use href="#gear" x="-20" y="-20" width="40" height="40"/></g></g>
+      <text class="lbl" x="120" y="150" text-anchor="middle">今天已经存在</text>
+      <g style="color:var(--dim)" transform="translate(430,85)">
+        <g class="gear faster" opacity=".45"><use href="#gear" x="-70" y="-70" width="140" height="140"/></g>
+      </g>
+      <text class="lbl q" x="430" y="180" text-anchor="middle">仍是假设</text>
+      <text class="big" x="430" y="96" text-anchor="middle" fill="var(--pink)">?</text>
+    </svg>
+  </div>
+</section>
+
+<footer>
+  <p><b>用一句话说：</b> 递归自我改进，就是一个系统越来越擅长改进自己，让进步像复利一样积累。</p>
+</footer>
+
+</div>
+
+<script>
+const io = new IntersectionObserver((es)=>{
+  es.forEach(e=>{ if(e.isIntersecting){ e.target.classList.add('in'); io.unobserve(e.target);} });
+},{threshold:.18});
+document.querySelectorAll('.rise').forEach(el=>io.observe(el));
+</script>
+</body>
+</html>

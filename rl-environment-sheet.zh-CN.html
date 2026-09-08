@@ -1,0 +1,645 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>给 AI 搭一间练习室：强化学习环境搭建图解</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:ital,wdth,wght@0,62..125,300..900;1,62..125,400&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#E6E5DE;
+    --card:#F3F2ED;
+    --ink:#15171B;
+    --blue:#1B3FD8;
+    --amber:#F0B429;
+    --red:#CE3B1E;
+    --rule:rgba(21,23,27,.22);
+    --gut:clamp(20px,4vw,64px);
+  }
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    margin:0;
+    background:var(--paper);
+    color:var(--ink);
+    font-family:"Archivo",system-ui,-apple-system,sans-serif;
+    font-variation-settings:"wdth" 100;
+    line-height:1.45;
+    /* faint blueprint grid */
+    background-image:
+      linear-gradient(rgba(21,23,27,.045) 1px,transparent 1px),
+      linear-gradient(90deg,rgba(21,23,27,.045) 1px,transparent 1px);
+    background-size:28px 28px;
+  }
+
+  .sheet{max-width:1120px;margin:0 auto;padding:clamp(28px,5vw,72px) var(--gut) 0;position:relative}
+
+  /* crop marks */
+  .mark{position:absolute;width:22px;height:22px;border:2px solid var(--ink);opacity:.55}
+  .mark.tl{top:14px;left:14px;border-right:0;border-bottom:0}
+  .mark.tr{top:14px;right:14px;border-left:0;border-bottom:0}
+
+  .mono{font-family:"DM Mono",ui-monospace,SFMono-Regular,Menlo,monospace}
+
+  .eyebrow{
+    font-family:"DM Mono",monospace;font-size:clamp(10px,1.5vw,12.5px);
+    letter-spacing:.22em;text-transform:uppercase;
+    display:flex;align-items:center;gap:12px;margin:0 0 18px;
+  }
+  .eyebrow::after{content:"";flex:1;height:1px;background:var(--rule)}
+
+  h1{
+    font-size:clamp(40px,10.5vw,124px);
+    font-weight:900;
+    font-variation-settings:"wdth" 78,"wght" 900;
+    line-height:.86;
+    letter-spacing:-.02em;
+    text-transform:uppercase;
+    margin:0 0 22px;
+  }
+  h1 em{font-style:normal;color:var(--blue)}
+
+  .lede{
+    font-size:clamp(16px,2.4vw,23px);
+    max-width:44ch;margin:0 0 clamp(28px,5vw,52px);
+    font-weight:400;
+  }
+
+  /* ---- section headings ---- */
+  h2{
+    font-size:clamp(28px,6vw,60px);
+    font-weight:800;
+    font-variation-settings:"wdth" 82,"wght" 800;
+    line-height:.92;letter-spacing:-.015em;text-transform:uppercase;
+    margin:0 0 14px;
+  }
+  h3{
+    font-size:clamp(22px,3.6vw,38px);
+    font-weight:800;
+    font-variation-settings:"wdth" 85,"wght" 800;
+    line-height:.98;letter-spacing:-.01em;text-transform:uppercase;
+    margin:0 0 10px;
+  }
+  p{margin:0 0 12px;font-size:clamp(15px,1.9vw,18px);max-width:38ch}
+
+  /* ---- panels ---- */
+  .band{padding:clamp(40px,7vw,90px) 0;border-top:1.5px solid var(--rule)}
+  .band:first-of-type{border-top:0}
+
+  .split{display:grid;grid-template-columns:1fr;gap:clamp(20px,3.5vw,44px);align-items:center}
+  @media(min-width:820px){
+    .split{grid-template-columns:1.35fr .8fr}
+    .split.flip .fig{order:2}
+  }
+
+  .fig{
+    background:var(--card);
+    border:2.5px solid var(--ink);
+    border-radius:6px;
+    padding:clamp(12px,2.2vw,26px);
+    position:relative;
+  }
+  .fig svg{display:block;width:100%;height:auto}
+  .fig .tag{
+    position:absolute;top:-2.5px;left:-2.5px;
+    background:var(--ink);color:var(--card);
+    font-family:"DM Mono",monospace;font-size:11px;letter-spacing:.16em;
+    padding:5px 10px;border-radius:6px 0 6px 0;
+  }
+
+  .num{
+    font-family:"DM Mono",monospace;
+    font-size:clamp(12px,1.6vw,14px);
+    letter-spacing:.2em;color:var(--blue);
+    display:block;margin-bottom:10px;
+  }
+
+  /* ---- parts stack ---- */
+  .parts{display:grid;gap:clamp(26px,4vw,54px)}
+
+  /* ---- loop ---- */
+  .loop-wrap{background:var(--ink);border-radius:8px;padding:clamp(16px,3vw,34px);color:var(--card)}
+  .loop-wrap svg{display:block;width:100%;height:auto}
+  .loop-head{display:flex;flex-wrap:wrap;gap:10px 28px;align-items:baseline;margin-bottom:18px}
+  .loop-head h2{color:var(--card);margin:0}
+  .loop-head p{color:rgba(243,242,237,.72);margin:0;max-width:34ch}
+
+  .runner{
+    r:13;fill:var(--amber);
+    offset-path:path("M 210 66 H 690 Q 840 66 840 206 Q 840 346 690 346 H 210 Q 60 346 60 206 Q 60 66 210 66 Z");
+    offset-rotate:0deg;
+    animation:orbit 7s linear infinite;
+  }
+  @keyframes orbit{from{offset-distance:0%}to{offset-distance:100%}}
+
+  /* ---- warnings ---- */
+  .warns{display:grid;gap:18px;grid-template-columns:1fr}
+  @media(min-width:760px){.warns{grid-template-columns:repeat(3,1fr)}}
+  .warn{
+    background:var(--card);border:2.5px solid var(--red);border-radius:6px;
+    padding:clamp(14px,2vw,20px);
+  }
+  .warn svg{display:block;width:100%;height:auto;margin-bottom:14px}
+  .warn h3{font-size:clamp(19px,2.4vw,25px);color:var(--red)}
+  .warn p{font-size:15px;max-width:none}
+
+  /* ---- closing ---- */
+  .close{
+    border-top:1.5px solid var(--rule);
+    padding:clamp(46px,8vw,110px) 0 clamp(40px,6vw,80px);
+  }
+  .close blockquote{
+    margin:0;font-size:clamp(24px,4.6vw,50px);
+    font-weight:700;font-variation-settings:"wdth" 88,"wght" 700;
+    line-height:1.02;letter-spacing:-.015em;max-width:20ch;
+  }
+  .close blockquote b{color:var(--blue);font-weight:700}
+  .colophon{
+    display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;
+    font-family:"DM Mono",monospace;font-size:11.5px;letter-spacing:.16em;
+    text-transform:uppercase;opacity:.6;margin-top:44px;
+  }
+
+  /* svg text helper */
+  .st{font-family:"DM Mono",monospace;font-size:15px;letter-spacing:.12em;fill:var(--ink)}
+  .st-b{font-family:"Archivo",sans-serif;font-weight:800;font-variation-settings:"wdth" 85;fill:var(--ink)}
+
+  /* reveal */
+  .rv{opacity:0;transform:translateY(20px);transition:opacity .65s ease,transform .65s cubic-bezier(.2,.8,.2,1)}
+  .rv.in{opacity:1;transform:none}
+
+  @media (prefers-reduced-motion: reduce){
+    .rv{opacity:1;transform:none;transition:none}
+    .runner{animation:none;offset-distance:12%}
+    *{animation-duration:.001ms!important;animation-iteration-count:1!important}
+  }
+
+html[lang="zh-CN"] body{font-family:"PingFang SC","Microsoft YaHei","Noto Sans CJK SC",system-ui,sans-serif}
+html[lang="zh-CN"] h1,html[lang="zh-CN"] h2,html[lang="zh-CN"] h3{line-height:1.2;letter-spacing:0}
+</style>
+<!-- eli5:head:start -->
+<link rel="alternate" hreflang="en" href="rl-environment-sheet.en.html">
+<link rel="alternate" hreflang="zh-CN" href="rl-environment-sheet.zh-CN.html">
+<link rel="stylesheet" href="language.css">
+<script src="language.js" defer></script>
+<!-- eli5:head:end -->
+</head>
+<body>
+<!-- eli5:nav:start -->
+<div class="eli5-site-nav" role="navigation" aria-label="图解导航与语言选择">
+  <a class="eli5-nav-home" href="index.html?lang=zh-CN">← 图解目录</a>
+  <div class="eli5-languages">
+    <a href="rl-environment-sheet.zh-CN.html" data-language="zh-CN" lang="zh-CN" hreflang="zh-CN" aria-current="page">简体中文</a>
+    <a href="rl-environment-sheet.en.html" data-language="en" lang="en" hreflang="en">English</a>
+  </div>
+</div>
+<!-- eli5:nav:end -->
+<div class="sheet">
+  <span class="mark tl"></span><span class="mark tr"></span>
+
+  <!-- ===================== COVER ===================== -->
+  <header class="band">
+    <p class="eyebrow">图纸 01 · 强化学习 · 搭建指南</p>
+    <h1>给 AI<br>搭一间专属<br><em>练习室</em></h1>
+    <p class="lede">人们说“搭建强化学习（RL）环境”，指的就是这些。五个部件，一个循环，用大白话讲清楚。</p>
+
+    <div class="fig">
+      <span class="tag">图 00：整体结构</span>
+      <svg viewBox="0 0 900 470" role="img" aria-label="隔离练习室里，AI 在终端前工作。左侧输入任务卡，右侧输出分数，下方虚线箭头表示重置后再试。">
+        <!-- task card entering -->
+        <g stroke="var(--ink)" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M30 150 h96 v78 h-96 l20 -39 z" fill="var(--blue)"/>
+        </g>
+        <line x1="128" y1="189" x2="196" y2="189" stroke="var(--ink)" stroke-width="5" stroke-linecap="round"/>
+        <path d="M186 179 l14 10 -14 10" fill="none" stroke="var(--ink)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+        <text class="st" x="30" y="130" font-size="14">任务</text>
+
+        <!-- room -->
+        <rect x="200" y="60" width="500" height="300" rx="18" fill="var(--card)" stroke="var(--ink)" stroke-width="6"/>
+        <rect x="218" y="78" width="464" height="264" rx="10" fill="none" stroke="var(--ink)" stroke-width="2.5" stroke-dasharray="9 9" opacity=".55"/>
+        <text class="st" x="234" y="102" font-size="13" opacity=".65">隔离练习室</text>
+
+        <!-- agent -->
+        <line x1="450" y1="150" x2="450" y2="126" stroke="var(--ink)" stroke-width="5" stroke-linecap="round"/>
+        <circle cx="450" cy="118" r="9" fill="var(--blue)" stroke="var(--ink)" stroke-width="4"/>
+        <rect x="392" y="150" width="116" height="96" rx="26" fill="var(--amber)" stroke="var(--ink)" stroke-width="5"/>
+        <circle cx="422" cy="190" r="8.5" fill="var(--ink)"/>
+        <circle cx="478" cy="190" r="8.5" fill="var(--ink)"/>
+        <path d="M428 218 q22 14 44 0" fill="none" stroke="var(--ink)" stroke-width="5" stroke-linecap="round"/>
+
+        <!-- terminal -->
+        <rect x="352" y="264" width="196" height="62" rx="8" fill="var(--ink)"/>
+        <text class="st" x="372" y="303" fill="var(--amber)" font-size="20">&gt;_ 运行</text>
+
+        <!-- score out -->
+        <line x1="704" y1="189" x2="768" y2="189" stroke="var(--ink)" stroke-width="5" stroke-linecap="round"/>
+        <path d="M758 179 l14 10 -14 10" fill="none" stroke="var(--ink)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="826" cy="189" r="46" fill="var(--card)" stroke="var(--ink)" stroke-width="5"/>
+        <path d="M806 189 l14 15 26 -32" fill="none" stroke="var(--blue)" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+        <text class="st" x="790" y="130" font-size="14">得分</text>
+
+        <!-- reset loop -->
+        <path d="M826 250 v112 q0 22 -22 22 H118 q-22 0 -22 -22 v-118"
+              fill="none" stroke="var(--blue)" stroke-width="4" stroke-dasharray="10 10" stroke-linecap="round"/>
+        <path d="M86 258 l10 -14 10 14" fill="none" stroke="var(--blue)" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+        <text class="st" x="404" y="418" fill="var(--blue)" font-size="14">重置 · 再试一次</text>
+      </svg>
+    </div>
+  </header>
+
+  <!-- ===================== WHY ===================== -->
+  <section class="band">
+    <div class="split rv">
+      <div class="fig">
+        <span class="tag">图 01：两种学习方式</span>
+        <svg viewBox="0 0 820 380" role="img" aria-label="左侧是书堆旁的 AI，表示阅读；右侧是工作台前拿着扳手的 AI，旁边有成功标记，表示亲自尝试。">
+          <!-- left: reading -->
+          <g>
+            <rect x="60" y="286" width="118" height="18" rx="6" fill="var(--ink)" opacity=".18"/>
+            <rect x="70" y="240" width="98" height="20" rx="4" fill="var(--card)" stroke="var(--ink)" stroke-width="4"/>
+            <rect x="62" y="212" width="114" height="22" rx="4" fill="var(--blue)" stroke="var(--ink)" stroke-width="4"/>
+            <rect x="74" y="184" width="94" height="22" rx="4" fill="var(--card)" stroke="var(--ink)" stroke-width="4"/>
+            <rect x="66" y="156" width="108" height="22" rx="4" fill="var(--card)" stroke="var(--ink)" stroke-width="4"/>
+            <rect x="76" y="128" width="90" height="22" rx="4" fill="var(--blue)" stroke="var(--ink)" stroke-width="4"/>
+            <!-- agent -->
+            <rect x="212" y="188" width="104" height="88" rx="24" fill="var(--amber)" stroke="var(--ink)" stroke-width="5"/>
+            <circle cx="240" cy="224" r="8" fill="var(--ink)"/><circle cx="290" cy="224" r="8" fill="var(--ink)"/>
+            <line x1="248" y1="252" x2="282" y2="252" stroke="var(--ink)" stroke-width="5" stroke-linecap="round"/>
+            <text class="st-b" x="60" y="344" font-size="30">阅读</text>
+            <text class="st" x="60" y="368" font-size="13" opacity=".6">学习语言</text>
+          </g>
+
+          <line x1="410" y1="60" x2="410" y2="330" stroke="var(--ink)" stroke-width="2.5" stroke-dasharray="8 10" opacity=".45"/>
+
+          <!-- right: doing -->
+          <g>
+            <rect x="486" y="256" width="272" height="16" rx="6" fill="var(--ink)"/>
+            <!-- broken thing being fixed -->
+            <rect x="506" y="176" width="110" height="80" rx="10" fill="var(--card)" stroke="var(--ink)" stroke-width="5"/>
+            <path d="M528 216 l22 -22 m0 22 l-22 -22" stroke="var(--red)" stroke-width="5" stroke-linecap="round"/>
+            <path d="M572 218 l12 13 24 -30" fill="none" stroke="var(--blue)" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+            <!-- agent + wrench -->
+            <rect x="640" y="168" width="104" height="88" rx="24" fill="var(--amber)" stroke="var(--ink)" stroke-width="5"/>
+            <circle cx="668" cy="204" r="8" fill="var(--ink)"/><circle cx="718" cy="204" r="8" fill="var(--ink)"/>
+            <path d="M676 230 q16 12 32 0" fill="none" stroke="var(--ink)" stroke-width="5" stroke-linecap="round"/>
+            <path d="M634 148 q-30 -30 -6 -52 l18 18 16 -16 -18 -18 q26 -18 50 12" fill="var(--card)" stroke="var(--ink)" stroke-width="4.5" stroke-linejoin="round"/>
+            <text class="st-b" x="486" y="344" font-size="30">尝试</text>
+            <text class="st" x="486" y="368" font-size="13" opacity=".6">学习技能</text>
+          </g>
+        </svg>
+      </div>
+      <div>
+        <span class="num">为什么要这样做</span>
+        <h2>读过不等于练过</h2>
+        <p>AI 通过阅读海量文本学会语言，知道一个回答应该 <em>长</em> 什么样。</p>
+        <p>但要擅长修代码、订行程这样的工作，它得亲自尝试，再看看结果如何。这就需要一个可以练习的地方。</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== PARTS ===================== -->
+  <section class="band">
+    <p class="eyebrow">部件清单 · 需要搭建的全部内容</p>
+    <h2 style="margin-bottom:clamp(28px,5vw,56px)">五个部件</h2>
+
+    <div class="parts">
+
+      <!-- 01 -->
+      <div class="split rv">
+        <div class="fig">
+          <span class="tag">部件 01</span>
+          <svg viewBox="0 0 620 340" role="img" aria-label="一张标题为“修复错误”的任务卡，上面有检查清单和小虫图案。">
+            <rect x="72" y="46" width="392" height="252" rx="12" fill="var(--card)" stroke="var(--ink)" stroke-width="5"/>
+            <path d="M72 58 a12 12 0 0 1 12 -12 h380 v46 H72 z" fill="var(--blue)"/>
+            <text class="st" x="98" y="80" fill="var(--card)" font-size="17">任务</text>
+            <text class="st-b" x="98" y="146" font-size="30">修复这个错误。</text>
+            <g stroke="var(--ink)" stroke-width="4" stroke-linecap="round">
+              <rect x="100" y="180" width="26" height="26" rx="5" fill="none"/>
+              <line x1="146" y1="193" x2="330" y2="193"/>
+              <rect x="100" y="228" width="26" height="26" rx="5" fill="none"/>
+              <line x1="146" y1="241" x2="286" y2="241"/>
+            </g>
+            <!-- bug -->
+            <g stroke="var(--ink)" stroke-width="4.5" stroke-linecap="round">
+              <ellipse cx="524" cy="196" rx="42" ry="50" fill="var(--red)"/>
+              <line x1="482" y1="168" x2="452" y2="146"/><line x1="566" y1="168" x2="596" y2="146"/>
+              <line x1="478" y1="200" x2="444" y2="200"/><line x1="570" y1="200" x2="604" y2="200"/>
+              <line x1="484" y1="228" x2="454" y2="252"/><line x1="564" y1="228" x2="594" y2="252"/>
+              <line x1="524" y1="150" x2="524" y2="244" stroke-width="3.5"/>
+            </g>
+          </svg>
+        </div>
+        <div>
+          <span class="num">01</span>
+          <h3>一项明确的任务</h3>
+          <p>给 AI 一个能从头做到尾的明确任务。任务要足够具体，完成后能判断它究竟有没有成功。</p>
+        </div>
+      </div>
+
+      <!-- 02 -->
+      <div class="split flip rv">
+        <div class="fig">
+          <span class="tag">部件 02</span>
+          <svg viewBox="0 0 620 340" role="img" aria-label="AI 位于上锁的隔离练习室内，红色屏障将它与代表外界真实世界的房子隔开。">
+            <rect x="42" y="52" width="330" height="238" rx="16" fill="var(--card)" stroke="var(--ink)" stroke-width="6"/>
+            <rect x="58" y="68" width="298" height="206" rx="8" fill="none" stroke="var(--ink)" stroke-width="2.5" stroke-dasharray="9 9" opacity=".5"/>
+            <rect x="158" y="140" width="100" height="86" rx="24" fill="var(--amber)" stroke="var(--ink)" stroke-width="5"/>
+            <circle cx="185" cy="176" r="8" fill="var(--ink)"/><circle cx="233" cy="176" r="8" fill="var(--ink)"/>
+            <path d="M192 202 q16 12 32 0" fill="none" stroke="var(--ink)" stroke-width="5" stroke-linecap="round"/>
+            <!-- padlock -->
+            <g transform="translate(330,36)">
+              <path d="M14 30 v-10 a18 18 0 0 1 36 0 v10" fill="none" stroke="var(--ink)" stroke-width="6"/>
+              <rect x="2" y="30" width="60" height="46" rx="8" fill="var(--blue)" stroke="var(--ink)" stroke-width="5"/>
+            </g>
+            <!-- barrier -->
+            <line x1="418" y1="40" x2="418" y2="304" stroke="var(--red)" stroke-width="6" stroke-dasharray="16 12" stroke-linecap="round"/>
+            <!-- outside world -->
+            <g stroke="var(--ink)" stroke-width="5" stroke-linejoin="round" fill="none">
+              <path d="M470 190 l60 -52 60 52" fill="var(--card)"/>
+              <rect x="486" y="190" width="88" height="76" fill="var(--card)"/>
+              <rect x="516" y="222" width="30" height="44" fill="var(--blue)"/>
+            </g>
+            <text class="st" x="462" y="300" font-size="13" opacity=".65">真实世界</text>
+          </svg>
+        </div>
+        <div>
+          <span class="num">02</span>
+          <h3>一间隔离练习室</h3>
+          <p>一台随时可以丢弃、与外界隔离的计算机。AI 即使把里面的东西弄坏，也不会伤到真实系统。</p>
+        </div>
+      </div>
+
+      <!-- 03 -->
+      <div class="split rv">
+        <div class="fig">
+          <span class="tag">部件 03</span>
+          <svg viewBox="0 0 620 340" role="img" aria-label="工具架上挂着三件工具：终端、文件和放大镜。">
+            <line x1="60" y1="72" x2="560" y2="72" stroke="var(--ink)" stroke-width="6" stroke-linecap="round"/>
+            <g stroke="var(--ink)" stroke-width="4">
+              <line x1="150" y1="72" x2="150" y2="112"/>
+              <line x1="310" y1="72" x2="310" y2="112"/>
+              <line x1="470" y1="72" x2="470" y2="112"/>
+            </g>
+            <!-- terminal -->
+            <rect x="80" y="112" width="140" height="128" rx="12" fill="var(--ink)"/>
+            <text class="st" x="102" y="188" fill="var(--amber)" font-size="26">&gt;_</text>
+            <text class="st" x="82" y="272" font-size="13">运行代码</text>
+            <!-- file -->
+            <rect x="240" y="112" width="140" height="128" rx="12" fill="var(--card)" stroke="var(--ink)" stroke-width="5"/>
+            <g stroke="var(--blue)" stroke-width="5" stroke-linecap="round">
+              <line x1="270" y1="152" x2="350" y2="152"/><line x1="270" y1="178" x2="350" y2="178"/><line x1="270" y1="204" x2="320" y2="204"/>
+            </g>
+            <text class="st" x="244" y="272" font-size="13">打开文件</text>
+            <!-- search -->
+            <rect x="400" y="112" width="140" height="128" rx="12" fill="var(--card)" stroke="var(--ink)" stroke-width="5"/>
+            <circle cx="462" cy="168" r="28" fill="none" stroke="var(--ink)" stroke-width="5"/>
+            <line x1="482" y1="188" x2="506" y2="212" stroke="var(--ink)" stroke-width="6" stroke-linecap="round"/>
+            <text class="st" x="412" y="272" font-size="13">搜索资料</text>
+          </svg>
+        </div>
+        <div>
+          <span class="num">03</span>
+          <h3>允许使用的工具</h3>
+          <p>AI 可以按下的“按钮”：运行命令、读取文件、搜索。没有放上工具架的工具，在这间练习室里就用不了。</p>
+        </div>
+      </div>
+
+      <!-- 04 -->
+      <div class="split flip rv">
+        <div class="fig">
+          <span class="tag">部件 04</span>
+          <svg viewBox="0 0 620 340" role="img" aria-label="评分机器接收任务成果，运行测试清单，输出 0.67 分。">
+            <rect x="120" y="52" width="330" height="238" rx="14" fill="var(--card)" stroke="var(--ink)" stroke-width="6"/>
+            <rect x="120" y="52" width="330" height="46" rx="14" fill="var(--ink)"/>
+            <text class="st" x="146" y="84" fill="var(--card)" font-size="16">评分器</text>
+            <g stroke-linecap="round" stroke-linejoin="round">
+              <path d="M156 138 l16 16 30 -34" fill="none" stroke="var(--blue)" stroke-width="6"/>
+              <line x1="224" y1="140" x2="410" y2="140" stroke="var(--ink)" stroke-width="4"/>
+              <path d="M156 190 l16 16 30 -34" fill="none" stroke="var(--blue)" stroke-width="6"/>
+              <line x1="224" y1="192" x2="380" y2="192" stroke="var(--ink)" stroke-width="4"/>
+              <path d="M158 232 l30 30 m0 -30 l-30 30" stroke="var(--red)" stroke-width="6"/>
+              <line x1="224" y1="246" x2="350" y2="246" stroke="var(--ink)" stroke-width="4"/>
+            </g>
+            <!-- in arrow -->
+            <line x1="34" y1="170" x2="106" y2="170" stroke="var(--ink)" stroke-width="5" stroke-linecap="round"/>
+            <path d="M96 160 l14 10 -14 10" fill="none" stroke="var(--ink)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+            <!-- out score -->
+            <line x1="462" y1="170" x2="500" y2="170" stroke="var(--ink)" stroke-width="5" stroke-linecap="round"/>
+            <path d="M490 160 l14 10 -14 10" fill="none" stroke="var(--ink)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+            <rect x="510" y="130" width="86" height="80" rx="12" fill="var(--amber)" stroke="var(--ink)" stroke-width="5"/>
+            <text class="st-b" x="526" y="184" font-size="34">0.67</text>
+          </svg>
+        </div>
+        <div>
+          <span class="num">04</span>
+          <h3>一个评分器</h3>
+          <p>这是难点。它必须输出一个数值，而不是主观印象。“所有测试都通过”是个好标准；“看起来还行”根本算不上评分规则。</p>
+        </div>
+      </div>
+
+      <!-- 05 -->
+      <div class="split rv">
+        <div class="fig">
+          <span class="tag">部件 05</span>
+          <svg viewBox="0 0 620 340" role="img" aria-label="左边是用乱的练习室，中间是重置箭头，右边是恢复干净的同一间练习室。">
+            <rect x="42" y="104" width="180" height="150" rx="12" fill="var(--card)" stroke="var(--ink)" stroke-width="5"/>
+            <g stroke="var(--red)" stroke-width="4" stroke-linecap="round" fill="none">
+              <path d="M66 140 q30 26 -2 44 t34 30"/>
+              <path d="M132 132 q34 20 6 46 t30 34"/>
+              <circle cx="190" cy="150" r="10"/>
+            </g>
+            <text class="st" x="42" y="288" font-size="13" opacity=".65">用过之后</text>
+
+            <path d="M256 232 a80 80 0 1 1 116 0" fill="none" stroke="var(--blue)" stroke-width="7" stroke-linecap="round"/>
+            <path d="M356 208 l18 26 26 -18" fill="none" stroke="var(--blue)" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+
+            <rect x="404" y="104" width="180" height="150" rx="12" fill="var(--card)" stroke="var(--ink)" stroke-width="5"/>
+            <line x1="428" y1="230" x2="560" y2="230" stroke="var(--ink)" stroke-width="4" stroke-linecap="round" opacity=".3"/>
+            <text class="st" x="404" y="288" font-size="13" opacity=".65">恢复干净</text>
+          </svg>
+        </div>
+        <div>
+          <span class="num">05</span>
+          <h3>一个重置按钮</h3>
+          <p>每次尝试都从完全相同的干净状态开始。如果起点不断变化，你就分不清是 AI 进步了，还是环境变简单了。</p>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ===================== LOOP ===================== -->
+  <section class="band">
+    <div class="loop-wrap rv">
+      <div class="loop-head">
+        <h2>接下来：进入循环</h2>
+        <p>完整跑一轮，叫作一次 rollout（采样轨迹）。训练要跑数百万轮，并逐步让模型更倾向于采取能得高分的做法。</p>
+      </div>
+      <svg viewBox="0 0 900 412" role="img" aria-label="顺时针循环经过四站：领取任务、采取行动、观察结果、获得评分；中心是接受更新的模型。">
+        <path d="M 210 66 H 690 Q 840 66 840 206 Q 840 346 690 346 H 210 Q 60 346 60 206 Q 60 66 210 66 Z"
+              fill="none" stroke="rgba(243,242,237,.28)" stroke-width="5"/>
+
+        <!-- stations -->
+        <g font-family="DM Mono, monospace" font-size="15" letter-spacing="2" fill="#F3F2ED">
+          <circle cx="450" cy="66" r="13" fill="#F3F2ED"/>
+          <text x="450" y="40" text-anchor="middle">领取任务</text>
+
+          <circle cx="840" cy="206" r="13" fill="#F3F2ED"/>
+          <text x="812" y="212" text-anchor="end">尝试行动</text>
+
+          <circle cx="450" cy="346" r="13" fill="#F3F2ED"/>
+          <text x="450" y="386" text-anchor="middle">观察结果</text>
+
+          <circle cx="60" cy="206" r="13" fill="var(--amber)"/>
+          <text x="88" y="212">获得评分</text>
+        </g>
+
+        <!-- direction arrows -->
+        <g fill="none" stroke="rgba(243,242,237,.55)" stroke-width="4" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M646 60 l14 6 -14 6"/>
+          <path d="M834 292 l6 14 6 -14"/>
+          <path d="M254 340 l-14 6 14 6"/>
+          <path d="M54 120 l6 -14 6 14"/>
+        </g>
+
+        <!-- moving dot -->
+        <circle class="runner" cx="0" cy="0"/>
+
+        <!-- centre: the model -->
+        <rect x="352" y="152" width="196" height="112" rx="26" fill="var(--amber)" stroke="#F3F2ED" stroke-width="5"/>
+        <circle cx="404" cy="198" r="10" fill="var(--ink)"/><circle cx="496" cy="198" r="10" fill="var(--ink)"/>
+        <path d="M412 232 q38 18 76 0" fill="none" stroke="var(--ink)" stroke-width="6" stroke-linecap="round"/>
+        <path d="M120 206 H 336" fill="none" stroke="var(--amber)" stroke-width="4" stroke-dasharray="10 10"/>
+        <path d="M326 196 l14 10 -14 10" fill="none" stroke="var(--amber)" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+        <text x="228" y="188" font-family="DM Mono, monospace" font-size="14" letter-spacing="2" fill="var(--amber)">微调模型</text>
+      </svg>
+    </div>
+  </section>
+
+  <!-- ===================== SCALE ===================== -->
+  <section class="band">
+    <div class="split flip rv">
+      <div class="fig">
+        <span class="tag">图 06：规模化运行</span>
+        <svg viewBox="0 0 820 300" role="img" aria-label="许多相同的小练习室排成网格并行运行，其中几个被突出显示。">
+          <g>
+            <!-- generated grid -->
+            <g id="grid">
+              <g>
+                <rect x="30"  y="40"  width="112" height="86" rx="10" fill="var(--card)" stroke="var(--ink)" stroke-width="4"/><circle cx="86"  cy="83"  r="16" fill="var(--amber)" stroke="var(--ink)" stroke-width="4"/>
+                <rect x="166" y="40"  width="112" height="86" rx="10" fill="var(--card)" stroke="var(--ink)" stroke-width="4"/><circle cx="222" cy="83"  r="16" fill="var(--card)" stroke="var(--ink)" stroke-width="4"/>
+                <rect x="302" y="40"  width="112" height="86" rx="10" fill="var(--card)" stroke="var(--ink)" stroke-width="4"/><circle cx="358" cy="83"  r="16" fill="var(--amber)" stroke="var(--ink)" stroke-width="4"/>
+                <rect x="438" y="40"  width="112" height="86" rx="10" fill="var(--card)" stroke="var(--ink)" stroke-width="4"/><circle cx="494" cy="83"  r="16" fill="var(--card)" stroke="var(--ink)" stroke-width="4"/>
+                <rect x="574" y="40"  width="112" height="86" rx="10" fill="var(--card)" stroke="var(--ink)" stroke-width="4"/><circle cx="630" cy="83"  r="16" fill="var(--amber)" stroke="var(--ink)" stroke-width="4"/>
+                <rect x="710" y="40"  width="112" height="86" rx="10" fill="var(--card)" stroke="var(--ink)" stroke-width="4" opacity=".45"/>
+
+                <rect x="30"  y="150" width="112" height="86" rx="10" fill="var(--card)" stroke="var(--ink)" stroke-width="4"/><circle cx="86"  cy="193" r="16" fill="var(--card)" stroke="var(--ink)" stroke-width="4"/>
+                <rect x="166" y="150" width="112" height="86" rx="10" fill="var(--card)" stroke="var(--ink)" stroke-width="4"/><circle cx="222" cy="193" r="16" fill="var(--amber)" stroke="var(--ink)" stroke-width="4"/>
+                <rect x="302" y="150" width="112" height="86" rx="10" fill="var(--card)" stroke="var(--ink)" stroke-width="4"/><circle cx="358" cy="193" r="16" fill="var(--card)" stroke="var(--ink)" stroke-width="4"/>
+                <rect x="438" y="150" width="112" height="86" rx="10" fill="var(--card)" stroke="var(--ink)" stroke-width="4"/><circle cx="494" cy="193" r="16" fill="var(--amber)" stroke="var(--ink)" stroke-width="4"/>
+                <rect x="574" y="150" width="112" height="86" rx="10" fill="var(--card)" stroke="var(--ink)" stroke-width="4" opacity=".7"/>
+                <rect x="710" y="150" width="112" height="86" rx="10" fill="var(--card)" stroke="var(--ink)" stroke-width="4" opacity=".28"/>
+              </g>
+            </g>
+            <text class="st" x="30" y="278" font-size="14" opacity=".65">× 数千个</text>
+          </g>
+        </svg>
+      </div>
+      <div>
+        <span class="num">扩大规模</span>
+        <h2>复制练习室</h2>
+        <p>这间练习室就是一个容器：计算机可以按同一份配方，在几秒内重新建好。于是你可以同时运行数千个，收集评分，用完后全部丢弃。</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== WARNINGS ===================== -->
+  <section class="band">
+    <p class="eyebrow">注意 · 容易出错的地方</p>
+    <h2 style="margin-bottom:clamp(24px,4vw,42px)">三种让你<br>白忙一个月的坑</h2>
+
+    <div class="warns rv">
+      <div class="warn">
+        <svg viewBox="0 0 300 190" role="img" aria-label="AI 伸到评分机器后面，拨动开关让自己通过。">
+          <rect x="20" y="46" width="150" height="110" rx="12" fill="var(--paper)" stroke="var(--ink)" stroke-width="5"/>
+          <text class="st" x="38" y="86" font-size="13">测试</text>
+          <path d="M38 108 l12 12 22 -26" fill="none" stroke="var(--blue)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+          <line x1="88" y1="112" x2="150" y2="112" stroke="var(--ink)" stroke-width="4" stroke-linecap="round"/>
+          <path d="M38 138 l12 12 22 -26" fill="none" stroke="var(--blue)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+          <line x1="88" y1="142" x2="132" y2="142" stroke="var(--ink)" stroke-width="4" stroke-linecap="round"/>
+          <!-- scissors cutting -->
+          <g stroke="var(--red)" stroke-width="5" fill="none" stroke-linecap="round">
+            <line x1="188" y1="60" x2="140" y2="122"/>
+            <line x1="188" y1="124" x2="140" y2="62"/>
+            <circle cx="198" cy="52" r="11"/><circle cx="198" cy="132" r="11"/>
+          </g>
+          <rect x="226" y="76" width="60" height="52" rx="10" fill="var(--amber)" stroke="var(--ink)" stroke-width="5"/>
+          <text class="st-b" x="240" y="112" font-size="22">1.0</text>
+        </svg>
+        <h3>它会钻空子</h3>
+        <p>如果删掉测试比修复错误得分更高，它就会删测试。它追求的是分数，不会自动理解你的初衷。</p>
+      </div>
+
+      <div class="warn">
+        <svg viewBox="0 0 300 190" role="img" aria-label="闪烁故障的练习室带着问号，输出不可靠的评分。">
+          <rect x="34" y="42" width="150" height="118" rx="12" fill="var(--paper)" stroke="var(--ink)" stroke-width="5" stroke-dasharray="14 9"/>
+          <text class="st-b" x="86" y="126" font-size="62" fill="var(--red)">?</text>
+          <path d="M204 56 l-22 44 h24 l-18 42" fill="none" stroke="var(--amber)" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+          <rect x="228" y="76" width="56" height="52" rx="10" fill="var(--paper)" stroke="var(--ink)" stroke-width="5"/>
+          <path d="M242 102 h28" stroke="var(--red)" stroke-width="6" stroke-linecap="round"/>
+        </svg>
+        <h3>不稳定会毁掉训练</h3>
+        <p>如果环境随机出故障，比如网络不稳、请求超时，分数就失去了意义，AI 学到的也只剩噪声。</p>
+      </div>
+
+      <div class="warn">
+        <svg viewBox="0 0 300 190" role="img" aria-label="三种难度：很低的台阶、标记为合适的中等阶梯，以及高得无法跨越的墙。">
+          <g stroke="var(--ink)" stroke-width="5" stroke-linejoin="round">
+            <rect x="18" y="136" width="60" height="26" fill="var(--paper)"/>
+            <g fill="var(--amber)">
+              <rect x="104" y="136" width="26" height="26"/>
+              <rect x="130" y="110" width="26" height="52"/>
+              <rect x="156" y="84" width="26" height="78"/>
+            </g>
+            <rect x="222" y="20" width="60" height="142" fill="var(--paper)"/>
+          </g>
+          <text class="st" x="18" y="182" font-size="12" opacity=".6">太简单</text>
+          <text class="st" x="112" y="182" font-size="12" fill="var(--blue)">正合适</text>
+          <text class="st" x="222" y="182" font-size="12" opacity=".6">太困难</text>
+        </svg>
+        <h3>把难度调合适</h3>
+        <p>次次都赢，学不到东西；次次都输，也学不到东西。合适的任务应该是它有时能完成、有时还做不到的。</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== CLOSE ===================== -->
+  <section class="close">
+    <blockquote>一个好环境，就是把一道好题问上 <b>一百万次</b>，并如实反馈每次表现。</blockquote>
+    <div class="colophon">
+      <span>共 1 页 · 第 1 页</span>
+      <span>强化学习 · 环境搭建</span>
+      <span>无需基础知识</span>
+    </div>
+  </section>
+</div>
+
+<script>
+  (function(){
+    var items = document.querySelectorAll('.rv');
+    if(!('IntersectionObserver' in window) || window.matchMedia('(prefers-reduced-motion: reduce)').matches){
+      items.forEach(function(el){ el.classList.add('in'); });
+      return;
+    }
+    var io = new IntersectionObserver(function(entries){
+      entries.forEach(function(e){
+        if(e.isIntersecting){ e.target.classList.add('in'); io.unobserve(e.target); }
+      });
+    },{ threshold:0.12, rootMargin:'0px 0px -8% 0px' });
+    items.forEach(function(el){ io.observe(el); });
+  })();
+</script>
+</body>
+</html>

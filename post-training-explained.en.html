@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Post-training, explained with pictures</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Instrument+Sans:wght@400;500&family=DM+Mono:wght@500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#14312A;
+    --paper:#E9EFE6;
+    --paper-2:#F6F9F2;
+    --cobalt:#2B4FD8;
+    --yolk:#F5B92C;
+    --berry:#E0475E;
+    --dough:#E8D4A8;
+    --mist:#BFD1C3;
+    --display:"Bricolage Grotesque","Trebuchet MS",system-ui,sans-serif;
+    --body:"Instrument Sans",system-ui,-apple-system,sans-serif;
+    --mono:"DM Mono",ui-monospace,"Courier New",monospace;
+  }
+
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0;
+    background:var(--paper);
+    color:var(--ink);
+    font-family:var(--body);
+    -webkit-font-smoothing:antialiased;
+  }
+
+  .wrap{max-width:1060px;margin:0 auto;padding:0 24px}
+
+  /* ---------- shared type ---------- */
+  .label{
+    font-family:var(--mono);
+    font-size:.72rem;
+    letter-spacing:.2em;
+    text-transform:uppercase;
+    color:var(--cobalt);
+    margin:0 0 18px;
+  }
+  .label--quiet{color:var(--ink);opacity:.5}
+  h1,h2,h3{font-family:var(--display);font-weight:800;letter-spacing:-.02em;margin:0}
+  h1{font-size:clamp(2.7rem,8.2vw,5.4rem);line-height:.94}
+  h2{font-size:clamp(2.1rem,5.6vw,3.7rem);line-height:1}
+  h3{font-size:clamp(1.5rem,3.4vw,2rem);line-height:1.05}
+  .say{
+    font-size:clamp(1.05rem,2.1vw,1.3rem);
+    line-height:1.5;
+    max-width:36ch;
+    margin:22px 0 0;
+    opacity:.85;
+  }
+  .foot-note{
+    font-family:var(--mono);
+    font-size:.8rem;
+    letter-spacing:.02em;
+    margin:18px 0 0;
+    color:var(--cobalt);
+  }
+
+  /* ---------- picture frame ---------- */
+  .pic{
+    margin:38px 0 0;
+    background:var(--paper-2);
+    border:7px solid var(--ink);
+    border-radius:30px;
+    box-shadow:14px 14px 0 var(--cobalt);
+    padding:clamp(14px,3vw,34px);
+  }
+  .pic svg{display:block;width:100%;height:auto}
+
+  /* ---------- hero ---------- */
+  .hero{padding:clamp(56px,10vw,110px) 0 clamp(30px,6vw,60px);text-align:center}
+  .hero h1{max-width:16ch;margin:0 auto}
+  .hero .say{margin:26px auto 0;text-align:center}
+  .hero-art{max-width:620px;margin:clamp(20px,4vw,42px) auto 0}
+  .hero-art svg{display:block;width:100%;height:auto}
+  @keyframes wobble{
+    0%,100%{transform:translate(175px,140px) scale(1.6) rotate(0deg)}
+    50%{transform:translate(175px,146px) scale(1.58) rotate(-1.4deg)}
+  }
+  #heroDough{
+    transform:translate(175px,140px) scale(1.6);
+    animation:wobble 6.5s ease-in-out infinite;
+  }
+
+  /* ---------- stations ---------- */
+  .stn{padding:clamp(56px,9vw,110px) 0;border-top:5px solid var(--ink)}
+  .stn:first-of-type{border-top:none}
+
+  /* ---------- chat bubbles ---------- */
+  .chat{margin:38px 0 0;display:flex;flex-direction:column;gap:16px;max-width:640px}
+  .bub{
+    border:6px solid var(--ink);
+    border-radius:26px;
+    padding:20px 26px;
+    font-size:clamp(1.1rem,2.6vw,1.5rem);
+    font-family:var(--display);
+    font-weight:600;
+    line-height:1.25;
+  }
+  .bub-you{background:var(--paper-2);border-bottom-left-radius:6px;align-self:flex-start}
+  .bub-it{background:var(--yolk);border-bottom-right-radius:6px;align-self:flex-end;text-align:right}
+  .bub b{display:block;font-family:var(--mono);font-size:.7rem;font-weight:500;letter-spacing:.2em;text-transform:uppercase;opacity:.55;margin-bottom:8px}
+
+  /* ---------- two-up extras ---------- */
+  .pair{display:grid;grid-template-columns:1fr 1fr;gap:32px;margin:0}
+  .card{
+    background:var(--paper-2);
+    border:6px solid var(--ink);
+    border-radius:28px;
+    box-shadow:10px 10px 0 var(--yolk);
+    padding:clamp(18px,2.6vw,30px);
+  }
+  .card:last-child{box-shadow:10px 10px 0 var(--berry)}
+  .card svg{display:block;width:100%;height:auto;margin-bottom:18px}
+  .card .say{font-size:1rem;margin-top:12px}
+
+  /* ---------- glossary ---------- */
+  .gloss{
+    border-top:5px solid var(--ink);
+    padding:clamp(44px,7vw,80px) 0 clamp(60px,8vw,100px);
+    display:grid;
+    grid-template-columns:repeat(4,1fr);
+    gap:26px;
+  }
+  .gloss dt{font-family:var(--display);font-weight:800;font-size:1.15rem;margin-bottom:8px}
+  .gloss dd{margin:0;font-size:.95rem;line-height:1.45;opacity:.8}
+  .gloss div{border-top:4px solid var(--cobalt);padding-top:14px}
+  .disclaim{
+    grid-column:1/-1;
+    font-family:var(--mono);
+    font-size:.78rem;
+    opacity:.55;
+    line-height:1.6;
+    margin-top:10px;
+  }
+
+  /* ---------- reveal ---------- */
+  .rv{opacity:0;transform:translateY(30px);transition:opacity .7s ease,transform .7s cubic-bezier(.2,.7,.3,1)}
+  .rv.in{opacity:1;transform:none}
+  .rv-2{transition-delay:.1s}
+  .rv-3{transition-delay:.2s}
+
+  @media (max-width:760px){
+    .pair{grid-template-columns:1fr}
+    .gloss{grid-template-columns:1fr 1fr}
+    .pic{border-radius:22px;box-shadow:9px 9px 0 var(--cobalt)}
+  }
+  @media (max-width:420px){
+    .gloss{grid-template-columns:1fr}
+  }
+
+  @media (prefers-reduced-motion:reduce){
+    html{scroll-behavior:auto}
+    .rv{opacity:1;transform:none;transition:none}
+    #heroDough{animation:none}
+    *{animation-duration:.001ms !important;transition-duration:.001ms !important}
+  }
+</style>
+<noscript><style>.rv{opacity:1;transform:none}</style></noscript>
+<!-- eli5:head:start -->
+<link rel="alternate" hreflang="en" href="post-training-explained.en.html">
+<link rel="alternate" hreflang="zh-CN" href="post-training-explained.zh-CN.html">
+<link rel="stylesheet" href="language.css">
+<script src="language.js" defer></script>
+<!-- eli5:head:end -->
+</head>
+<body>
+<!-- eli5:nav:start -->
+<div class="eli5-site-nav" role="navigation" aria-label="Guide navigation and language">
+  <a class="eli5-nav-home" href="index.html?lang=en">← All guides</a>
+  <div class="eli5-languages">
+    <a href="post-training-explained.zh-CN.html" data-language="zh-CN" lang="zh-CN" hreflang="zh-CN">简体中文</a>
+    <a href="post-training-explained.en.html" data-language="en" lang="en" hreflang="en" aria-current="page">English</a>
+  </div>
+</div>
+<!-- eli5:nav:end -->
+
+<!-- ============ HERO ============ -->
+<header class="hero wrap">
+  <p class="label">LLM post-training</p>
+  <h1>It read everything. It still can't answer you.</h1>
+
+  <div class="hero-art">
+    <svg viewBox="0 0 660 470" role="img" aria-label="A shapeless dough creature soaking up lines of text">
+      <!-- text lines flowing in -->
+      <g fill="var(--mist)">
+        <rect x="20" y="40" width="150" height="13" rx="6.5"/>
+        <rect x="42" y="72" width="112" height="13" rx="6.5"/>
+        <rect x="14" y="104" width="138" height="13" rx="6.5"/>
+        <rect x="52" y="136" width="88" height="13" rx="6.5"/>
+        <rect x="26" y="168" width="120" height="13" rx="6.5"/>
+        <rect x="60" y="200" width="72" height="13" rx="6.5"/>
+        <rect x="490" y="40" width="150" height="13" rx="6.5"/>
+        <rect x="506" y="72" width="112" height="13" rx="6.5"/>
+        <rect x="502" y="104" width="138" height="13" rx="6.5"/>
+        <rect x="520" y="136" width="88" height="13" rx="6.5"/>
+        <rect x="512" y="168" width="120" height="13" rx="6.5"/>
+        <rect x="528" y="200" width="72" height="13" rx="6.5"/>
+        <rect x="238" y="30" width="184" height="13" rx="6.5"/>
+        <rect x="272" y="62" width="116" height="13" rx="6.5"/>
+      </g>
+      <!-- the dough -->
+      <g id="heroDough">
+        <path d="M24 126 C4 84 26 20 96 18 C168 16 198 78 178 128 C166 158 38 156 24 126 Z"
+              fill="var(--dough)" stroke="var(--ink)" stroke-width="4.4" stroke-linejoin="round"/>
+        <circle cx="72" cy="78" r="8" fill="var(--ink)"/>
+        <circle cx="128" cy="78" r="8" fill="var(--ink)"/>
+        <path d="M74 114 q 13 -13 26 0 t 26 0" fill="none" stroke="var(--ink)" stroke-width="5" stroke-linecap="round"/>
+      </g>
+    </svg>
+  </div>
+
+  <p class="say">A fresh language model is a text-continuing machine. Post-training is how it learns to behave like an assistant.</p>
+</header>
+
+<main class="wrap">
+
+  <!-- ============ BEFORE ============ -->
+  <section class="stn">
+    <p class="label label--quiet rv">Before &middot; pretraining</p>
+    <h2 class="rv rv-2">It only knows how<br>to keep going.</h2>
+
+    <div class="chat rv rv-3">
+      <div class="bub bub-you"><b>you</b>How do I boil an egg?</div>
+      <div class="bub bub-it"><b>it</b>How do I fry an egg?<br>How do I poach an egg?<br>How do I&hellip;</div>
+    </div>
+
+    <p class="say rv rv-3">It's finishing your text, not answering it. Nobody ever taught it the difference.</p>
+  </section>
+
+  <!-- ============ STAGE 1 ============ -->
+  <section class="stn">
+    <p class="label rv">Stage 01 &middot; supervised fine-tuning</p>
+    <h2 class="rv rv-2">Show it good answers.</h2>
+
+    <div class="pic rv rv-3">
+      <svg viewBox="0 0 800 400" role="img" aria-label="A chef holds up a neat card; the dough copies it onto its own card">
+        <!-- chef hat, drawn twice to hide inner seams -->
+        <g fill="var(--paper-2)" stroke="var(--ink)" stroke-width="14">
+          <circle cx="118" cy="92" r="26"/><circle cx="145" cy="74" r="31"/><circle cx="172" cy="93" r="24"/>
+        </g>
+        <g fill="var(--paper-2)">
+          <circle cx="118" cy="92" r="26"/><circle cx="145" cy="74" r="31"/><circle cx="172" cy="93" r="24"/>
+        </g>
+        <rect x="104" y="102" width="82" height="26" rx="11" fill="var(--paper-2)" stroke="var(--ink)" stroke-width="7"/>
+        <!-- chef head -->
+        <circle cx="145" cy="150" r="42" fill="var(--dough)" stroke="var(--ink)" stroke-width="7"/>
+        <circle cx="131" cy="144" r="6.5" fill="var(--ink)"/>
+        <circle cx="159" cy="144" r="6.5" fill="var(--ink)"/>
+        <path d="M132 166 q 13 11 26 0" fill="none" stroke="var(--ink)" stroke-width="5.5" stroke-linecap="round"/>
+        <!-- chef's card: neat -->
+        <rect x="45" y="215" width="200" height="140" rx="16" fill="var(--paper-2)" stroke="var(--ink)" stroke-width="7"/>
+        <g fill="var(--cobalt)">
+          <rect x="72" y="245" width="146" height="13" rx="6.5"/>
+          <rect x="72" y="277" width="124" height="13" rx="6.5"/>
+          <rect x="72" y="309" width="90" height="13" rx="6.5"/>
+        </g>
+        <!-- arrow -->
+        <text x="360" y="222" text-anchor="middle" font-family="DM Mono, monospace" font-size="20" fill="var(--ink)" opacity=".6">copy</text>
+        <path d="M300 268 h68 v-24 l52 42 -52 42 v-24 h-68 Z" fill="var(--yolk)" stroke="var(--ink)" stroke-width="7" stroke-linejoin="round"/>
+        <!-- dough -->
+        <g transform="translate(520,40) scale(1.05)">
+          <path d="M24 126 C4 84 26 20 96 18 C168 16 198 78 178 128 C166 158 38 156 24 126 Z"
+                fill="var(--dough)" stroke="var(--ink)" stroke-width="6.7" stroke-linejoin="round"/>
+          <circle cx="72" cy="78" r="8" fill="var(--ink)"/>
+          <circle cx="128" cy="78" r="8" fill="var(--ink)"/>
+        </g>
+        <!-- dough's card: nearly neat -->
+        <rect x="505" y="228" width="210" height="132" rx="16" fill="var(--paper-2)" stroke="var(--ink)" stroke-width="7"/>
+        <g fill="none" stroke="var(--cobalt)" stroke-width="13" stroke-linecap="round">
+          <path d="M534 262 q 22 -9 44 0 t 44 0 t 40 0"/>
+          <path d="M534 296 q 22 -9 44 0 t 44 0"/>
+          <path d="M534 330 q 22 -9 44 0"/>
+        </g>
+      </svg>
+    </div>
+
+    <p class="say rv">People write thousands of ideal replies by hand. The model copies the pattern.</p>
+  </section>
+
+  <!-- ============ STAGE 2 ============ -->
+  <section class="stn">
+    <p class="label rv">Stage 02 &middot; human preferences</p>
+    <h2 class="rv rv-2">Ask which one is better.</h2>
+
+    <div class="pic rv rv-3">
+      <svg viewBox="0 0 800 400" role="img" aria-label="Two answer cards, A and B; a person points at B, which gets a check mark">
+        <defs>
+          <marker id="ar1" viewBox="0 0 12 12" refX="8" refY="6" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M1 1 L11 6 L1 11 z" fill="var(--ink)"/>
+          </marker>
+        </defs>
+        <text x="195" y="70" text-anchor="middle" font-family="DM Mono, monospace" font-size="26" fill="var(--ink)" opacity=".55">A</text>
+        <text x="605" y="70" text-anchor="middle" font-family="DM Mono, monospace" font-size="26" fill="var(--ink)" opacity=".55">B</text>
+        <!-- card A -->
+        <rect x="70" y="92" width="250" height="200" rx="20" fill="var(--paper-2)" stroke="var(--ink)" stroke-width="7"/>
+        <g fill="var(--mist)">
+          <rect x="100" y="140" width="150" height="14" rx="7"/>
+          <rect x="100" y="176" width="112" height="14" rx="7"/>
+          <rect x="100" y="212" width="70" height="14" rx="7"/>
+        </g>
+        <!-- card B -->
+        <rect x="480" y="92" width="250" height="200" rx="20" fill="var(--paper-2)" stroke="var(--ink)" stroke-width="7"/>
+        <g fill="var(--cobalt)">
+          <rect x="510" y="132" width="190" height="14" rx="7"/>
+          <rect x="510" y="166" width="166" height="14" rx="7"/>
+          <rect x="510" y="200" width="182" height="14" rx="7"/>
+          <rect x="510" y="234" width="104" height="14" rx="7"/>
+        </g>
+        <!-- badges -->
+        <circle cx="70" cy="92" r="40" fill="var(--paper)" stroke="var(--ink)" stroke-width="6" stroke-dasharray="11 13"/>
+        <circle cx="730" cy="92" r="42" fill="var(--yolk)" stroke="var(--ink)" stroke-width="7"/>
+        <path d="M710 93 l14 16 27 -34" fill="none" stroke="var(--ink)" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+        <!-- person -->
+        <circle cx="392" cy="330" r="36" fill="var(--dough)" stroke="var(--ink)" stroke-width="7"/>
+        <circle cx="380" cy="324" r="6" fill="var(--ink)"/>
+        <circle cx="405" cy="324" r="6" fill="var(--ink)"/>
+        <path d="M436 348 C 570 396 706 356 752 178" fill="none" stroke="var(--ink)" stroke-width="6"
+              stroke-dasharray="13 15" stroke-linecap="round" marker-end="url(#ar1)"/>
+      </svg>
+    </div>
+
+    <p class="say rv">Two replies. One person picks the better one. Repeat until a second model can guess the pick every time.</p>
+    <p class="foot-note rv">that guessing model is called the reward model</p>
+  </section>
+
+  <!-- ============ STAGE 3 ============ -->
+  <section class="stn">
+    <p class="label rv">Stage 03 &middot; reinforcement learning</p>
+    <h2 class="rv rv-2">Then let it practice.</h2>
+
+    <div class="pic rv rv-3">
+      <svg viewBox="0 0 800 400" role="img" aria-label="A loop: try, score, adjust, repeating">
+        <defs>
+          <marker id="ar2" viewBox="0 0 12 12" refX="8" refY="6" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M1 1 L11 6 L1 11 z" fill="var(--ink)"/>
+          </marker>
+        </defs>
+        <g fill="none" stroke="var(--ink)" stroke-width="8" stroke-linecap="round" marker-end="url(#ar2)">
+          <path d="M452 70 A140 140 0 0 1 539 220"/>
+          <path d="M486 310 A140 140 0 0 1 314 310"/>
+          <path d="M261 220 A140 140 0 0 1 348 70"/>
+        </g>
+
+        <!-- node: try -->
+        <circle cx="400" cy="60" r="54" fill="var(--paper-2)" stroke="var(--ink)" stroke-width="7"/>
+        <g transform="translate(364,29) scale(0.36)">
+          <path d="M24 126 C4 84 26 20 96 18 C168 16 198 78 178 128 C166 158 38 156 24 126 Z"
+                fill="var(--dough)" stroke="var(--ink)" stroke-width="19" stroke-linejoin="round"/>
+          <circle cx="72" cy="78" r="14" fill="var(--ink)"/>
+          <circle cx="128" cy="78" r="14" fill="var(--ink)"/>
+        </g>
+        <text x="400" y="140" text-anchor="middle" font-family="DM Mono, monospace" font-size="22" fill="var(--ink)">answer</text>
+
+        <!-- node: score -->
+        <circle cx="521" cy="270" r="54" fill="var(--paper-2)" stroke="var(--ink)" stroke-width="7"/>
+        <path d="M495 278 A26 26 0 0 1 547 278" fill="none" stroke="var(--mist)" stroke-width="9" stroke-linecap="round"/>
+        <path d="M535 258 A26 26 0 0 1 547 278" fill="none" stroke="var(--yolk)" stroke-width="9" stroke-linecap="round"/>
+        <path d="M521 278 L 504 254" stroke="var(--cobalt)" stroke-width="8" stroke-linecap="round"/>
+        <circle cx="521" cy="278" r="6" fill="var(--ink)"/>
+        <text x="521" y="352" text-anchor="middle" font-family="DM Mono, monospace" font-size="22" fill="var(--ink)">get a score</text>
+
+        <!-- node: adjust -->
+        <circle cx="279" cy="270" r="54" fill="var(--paper-2)" stroke="var(--ink)" stroke-width="7"/>
+        <circle cx="279" cy="270" r="26" fill="var(--yolk)" stroke="var(--ink)" stroke-width="7"/>
+        <path d="M279 270 L279 250" stroke="var(--ink)" stroke-width="7" stroke-linecap="round"/>
+        <g stroke="var(--ink)" stroke-width="6" stroke-linecap="round" opacity=".55">
+          <path d="M236 262 h12"/><path d="M310 262 h12"/>
+        </g>
+        <text x="279" y="352" text-anchor="middle" font-family="DM Mono, monospace" font-size="22" fill="var(--ink)">nudge itself</text>
+      </svg>
+    </div>
+
+    <p class="say rv">It answers, gets scored, tilts a little toward whatever scored well. Millions of times over.</p>
+    <p class="foot-note rv">human ratings + practice = RLHF</p>
+  </section>
+
+  <!-- ============ EXTRAS ============ -->
+  <section class="stn">
+    <p class="label rv">Two more things happen here</p>
+    <div class="pair" style="margin-top:34px">
+
+      <div class="card rv rv-2">
+        <svg viewBox="0 0 560 300" role="img" aria-label="A sum goes into a checking machine and comes out right or wrong">
+          <rect x="14" y="118" width="170" height="76" rx="14" fill="var(--paper)" stroke="var(--ink)" stroke-width="7"/>
+          <text x="99" y="166" text-anchor="middle" font-family="DM Mono, monospace" font-size="26" fill="var(--ink)">12&times;12=?</text>
+          <path d="M194 156 h34" stroke="var(--ink)" stroke-width="8" stroke-linecap="round"/>
+          <rect x="236" y="98" width="130" height="116" rx="18" fill="var(--cobalt)" stroke="var(--ink)" stroke-width="7"/>
+          <text x="301" y="166" text-anchor="middle" font-family="DM Mono, monospace" font-size="24" fill="var(--paper-2)">run it</text>
+          <g fill="none" stroke="var(--ink)" stroke-width="8" stroke-linecap="round">
+            <path d="M376 140 L410 92"/>
+            <path d="M376 172 L410 220"/>
+          </g>
+          <circle cx="472" cy="76" r="42" fill="var(--yolk)" stroke="var(--ink)" stroke-width="7"/>
+          <path d="M452 77 l14 16 27 -34" fill="none" stroke="var(--ink)" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+          <circle cx="472" cy="236" r="42" fill="var(--berry)" stroke="var(--ink)" stroke-width="7"/>
+          <g stroke="var(--ink)" stroke-width="9" stroke-linecap="round">
+            <path d="M456 220 l32 32"/><path d="M488 220 l-32 32"/>
+          </g>
+        </svg>
+        <h3>Some answers grade themselves.</h3>
+        <p class="say">Math and code can be checked by a machine. No human needed, so it can practice forever.</p>
+      </div>
+
+      <div class="card rv rv-3">
+        <svg viewBox="0 0 560 300" role="img" aria-label="A request bounces off a shield in front of the dough">
+          <rect x="4" y="112" width="96" height="70" rx="12" fill="var(--paper)" stroke="var(--ink)" stroke-width="7" transform="rotate(-12 52 147)"/>
+          <g stroke="var(--berry)" stroke-width="11" stroke-linecap="round" transform="rotate(-12 52 147)">
+            <path d="M24 138 h58"/><path d="M24 162 h38"/>
+          </g>
+          <g stroke="var(--berry)" stroke-width="7" stroke-linecap="round">
+            <path d="M114 108 l-18 -16"/><path d="M110 148 l-24 0"/><path d="M114 190 l-18 16"/>
+          </g>
+          <path d="M196 56 L268 88 V172 C268 214 232 240 196 254 C160 240 124 214 124 172 V88 Z"
+                fill="var(--cobalt)" stroke="var(--ink)" stroke-width="7" stroke-linejoin="round"/>
+          <path d="M172 152 l18 20 34 -42" fill="none" stroke="var(--paper-2)" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+          <g transform="translate(330,70)">
+            <path d="M24 126 C4 84 26 20 96 18 C168 16 198 78 178 128 C166 158 38 156 24 126 Z"
+                  fill="var(--dough)" stroke="var(--ink)" stroke-width="7" stroke-linejoin="round"/>
+            <circle cx="72" cy="78" r="8" fill="var(--ink)"/>
+            <circle cx="128" cy="78" r="8" fill="var(--ink)"/>
+            <path d="M76 116 h48" stroke="var(--ink)" stroke-width="6" stroke-linecap="round"/>
+          </g>
+        </svg>
+        <h3>And some get a no.</h3>
+        <p class="say">The same training teaches it which requests to turn down, and how to say so.</p>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ============ AFTER ============ -->
+  <section class="stn">
+    <p class="label rv">After</p>
+    <h2 class="rv rv-2">Same knowledge.<br>New manners.</h2>
+
+    <div class="pic rv rv-3">
+      <svg viewBox="0 0 800 400" role="img" aria-label="The dough, now wearing a chef hat, gives a tidy answer">
+        <!-- hat -->
+        <g fill="var(--paper-2)" stroke="var(--ink)" stroke-width="12">
+          <circle cx="176" cy="96" r="36"/><circle cx="228" cy="74" r="44"/><circle cx="282" cy="97" r="34"/>
+        </g>
+        <g fill="var(--paper-2)">
+          <circle cx="176" cy="96" r="36"/><circle cx="228" cy="74" r="44"/><circle cx="282" cy="97" r="34"/>
+        </g>
+        <rect x="156" y="110" width="148" height="36" rx="15" fill="var(--paper-2)" stroke="var(--ink)" stroke-width="7"/>
+        <!-- dough -->
+        <g transform="translate(90,120) scale(1.35)">
+          <path d="M24 126 C4 84 26 20 96 18 C168 16 198 78 178 128 C166 158 38 156 24 126 Z"
+                fill="var(--dough)" stroke="var(--ink)" stroke-width="5.2" stroke-linejoin="round"/>
+          <circle cx="72" cy="76" r="8" fill="var(--ink)"/>
+          <circle cx="128" cy="76" r="8" fill="var(--ink)"/>
+          <path d="M74 106 q 26 24 52 0" fill="none" stroke="var(--ink)" stroke-width="5.5" stroke-linecap="round"/>
+        </g>
+        <!-- speech bubble -->
+        <path d="M400 240 L456 208 L456 272 Z" fill="var(--paper)" stroke="var(--ink)" stroke-width="7" stroke-linejoin="round"/>
+        <rect x="450" y="96" width="300" height="208" rx="28" fill="var(--paper)" stroke="var(--ink)" stroke-width="7"/>
+        <g fill="var(--cobalt)">
+          <rect x="484" y="136" width="232" height="15" rx="7.5"/>
+          <rect x="484" y="172" width="204" height="15" rx="7.5"/>
+          <rect x="484" y="208" width="222" height="15" rx="7.5"/>
+          <rect x="484" y="244" width="140" height="15" rx="7.5"/>
+        </g>
+      </svg>
+    </div>
+
+    <p class="say rv">Pretraining decides what the model knows. Post-training decides how it acts.</p>
+  </section>
+
+  <!-- ============ GLOSSARY ============ -->
+  <dl class="gloss">
+    <div class="rv"><dt>SFT</dt><dd>Copying hand-written example answers.</dd></div>
+    <div class="rv rv-2"><dt>Reward model</dt><dd>A stand-in for human taste.</dd></div>
+    <div class="rv rv-3"><dt>RLHF</dt><dd>Practice, scored by that stand-in.</dd></div>
+    <div class="rv rv-3"><dt>RLVR</dt><dd>Practice on answers a machine can check.</dd></div>
+    <p class="disclaim rv">Simplified on purpose. In practice these stages overlap, repeat, and vary a lot between labs.</p>
+  </dl>
+
+</main>
+
+<script>
+  (function () {
+    var items = document.querySelectorAll('.rv');
+    if (!('IntersectionObserver' in window)) {
+      items.forEach(function (el) { el.classList.add('in'); });
+      return;
+    }
+    var obs = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) {
+        if (e.isIntersecting) { e.target.classList.add('in'); obs.unobserve(e.target); }
+      });
+    }, { threshold: 0.15, rootMargin: '0px 0px -8% 0px' });
+    items.forEach(function (el) { obs.observe(el); });
+  })();
+</script>
+</body>
+</html>

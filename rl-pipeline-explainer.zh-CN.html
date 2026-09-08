@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="no-js">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>尝试、评分、重复：语言模型如何通过反馈接受训练</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Space+Grotesk:wght@400;500;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#E7E9E2;
+    --paper-2:#DDE0D7;
+    --blue:#1F3CE8;
+    --pink:#FF3D9A;
+    --yellow:#FFC629;
+    --violet:#23169E;
+    --ink:#14151A;
+    --muted:#5A5F58;
+
+    --display:'Anton','Arial Narrow',Impact,sans-serif;
+    --body:'Space Grotesk',ui-sans-serif,system-ui,-apple-system,Segoe UI,sans-serif;
+    --mono:'Space Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
+  }
+
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  @media (prefers-reduced-motion: reduce){ html{scroll-behavior:auto} }
+
+  body{
+    background:var(--paper);
+    color:var(--ink);
+    font-family:var(--body);
+    font-size:clamp(16px,1.05vw + 13px,19px);
+    line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+    overflow-x:hidden;
+  }
+
+  /* paper grain */
+  body::after{
+    content:"";
+    position:fixed; inset:0; z-index:60; pointer-events:none;
+    opacity:.22; mix-blend-mode:multiply;
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3'/></filter><rect width='160' height='160' filter='url(%23n)' opacity='0.5'/></svg>");
+  }
+
+  .wrap{max-width:1180px;margin:0 auto;padding:0 clamp(18px,4vw,52px)}
+
+  /* ---------- shared bits ---------- */
+  .eyebrow{
+    font-family:var(--mono); font-size:.72rem; font-weight:700;
+    letter-spacing:.18em; text-transform:uppercase; color:var(--violet);
+    display:flex; align-items:center; gap:.6em; margin:0 0 1.1rem;
+  }
+  .eyebrow::after{content:"";flex:1;height:2px;background:currentColor;opacity:.35;max-width:110px}
+  .eyebrow--alt{color:var(--pink)}
+
+  h1,h2,h3{font-family:var(--display);font-weight:400;text-transform:uppercase;letter-spacing:-.01em;margin:0}
+
+  .lede{max-width:34ch;margin:0;color:var(--ink);font-size:1.02em}
+  .tag{
+    display:inline-block;margin-top:1.4rem;padding:.45em .8em;
+    font-family:var(--mono);font-size:.74rem;font-weight:700;letter-spacing:.06em;
+    border:2px solid var(--violet); color:var(--violet); border-radius:2px;
+    text-transform:uppercase;
+  }
+
+  /* registration crosshair */
+  .reg{position:absolute;width:22px;height:22px;color:var(--violet);opacity:.5}
+  .reg svg{display:block;width:100%;height:100%}
+
+  /* ---------- ink plates ---------- */
+  .plate{width:100%;height:auto;display:block;overflow:visible}
+  .plate .ink{mix-blend-mode:multiply}
+  .no-multiply .ink{mix-blend-mode:normal}
+  .js .plate .pink{transform:translate(9px,-8px)}
+  .js .in .plate .pink{transform:translate(0,0)}
+  .plate .pink{transition:transform 1000ms cubic-bezier(.16,.84,.24,1)}
+  .plate text{font-family:var(--mono);font-weight:700;letter-spacing:.04em}
+  .plate .lbl{font-size:15px;text-transform:uppercase}
+  .plate .lbl-sm{font-size:12px;text-transform:uppercase}
+  .plate .lbl-big{font-family:var(--display);font-size:26px;letter-spacing:0}
+
+  @media (prefers-reduced-motion: reduce){
+    .js .plate .pink{transform:none}
+    .plate .pink{transition:none}
+  }
+
+  /* fade-in */
+  .js .rise{opacity:0;transform:translateY(26px);transition:opacity .7s ease,transform .7s cubic-bezier(.16,.84,.24,1)}
+  .js .in .rise{opacity:1;transform:none}
+  .js .in .rise:nth-child(2){transition-delay:.06s}
+  .js .in .rise:nth-child(3){transition-delay:.12s}
+  @media (prefers-reduced-motion: reduce){
+    .js .rise{opacity:1;transform:none;transition:none}
+  }
+
+  /* ---------- hero ---------- */
+  .hero{position:relative;padding:clamp(70px,13vh,140px) 0 clamp(56px,9vh,110px)}
+  .hero .reg-tl{top:26px;left:clamp(18px,4vw,52px)}
+  .hero .reg-tr{top:26px;right:clamp(18px,4vw,52px)}
+
+  .stack{font-family:var(--display);text-transform:uppercase;line-height:.8;
+         font-size:clamp(4.2rem,17vw,12.5rem);letter-spacing:-.02em;margin:0 0 2rem}
+  .stack span{display:block}
+  .w1{color:var(--blue)}
+  .w2{color:var(--violet);padding-left:.09em}
+  .w3{color:var(--pink);padding-left:.18em}
+  .js .w3{transform:translate(10px,-9px);transition:transform 1100ms cubic-bezier(.16,.84,.24,1) .25s}
+  .js .in .w3{transform:none}
+  @media (prefers-reduced-motion: reduce){ .js .w3{transform:none;transition:none} }
+
+  .hero-foot{display:flex;flex-wrap:wrap;gap:clamp(20px,5vw,70px);align-items:flex-end;
+             border-top:3px solid var(--violet);padding-top:1.4rem}
+  .hero-foot p{margin:0;max-width:40ch}
+  .scroll-note{font-family:var(--mono);font-size:.74rem;letter-spacing:.16em;
+               text-transform:uppercase;color:var(--muted);white-space:nowrap}
+
+  /* ---------- panels ---------- */
+  .pnl{position:relative;padding:clamp(52px,9vh,104px) 0;border-top:2px solid rgba(35,22,158,.22)}
+  .pnl:first-of-type{border-top:none}
+  .grid{display:grid;grid-template-columns:1fr;gap:clamp(24px,4vw,64px);align-items:center}
+  @media (min-width:880px){
+    .grid{grid-template-columns:1.15fr .85fr}
+    .flip .grid{grid-template-columns:.85fr 1.15fr}
+    .flip .art{order:2}
+    .flip .txt{order:1}
+  }
+  .art{position:relative}
+  .txt h2{font-size:clamp(2.1rem,5.2vw,3.5rem);line-height:.92;margin-bottom:1rem}
+
+  /* focus panel (the loop) */
+  .focus{background:var(--blue);color:var(--paper);border-top:none;
+         padding:clamp(60px,11vh,120px) 0;margin:clamp(20px,5vh,54px) 0}
+  .focus .eyebrow{color:var(--yellow)}
+  .focus .eyebrow::after{opacity:.5}
+  .focus h2{color:var(--paper)}
+  .focus .lede{color:#DCE0F7}
+  .focus .tag{border-color:var(--yellow);color:var(--yellow)}
+  .focus .plate .ink{mix-blend-mode:normal}
+
+  /* ---------- glossary ---------- */
+  .gloss{padding:clamp(48px,8vh,96px) 0 clamp(70px,10vh,120px);border-top:3px solid var(--violet)}
+  .gloss h2{font-size:clamp(1.6rem,4vw,2.4rem);margin-bottom:1.6rem}
+  .rows{display:grid;gap:0}
+  .row{display:grid;grid-template-columns:1fr;gap:.15rem;
+       padding:.85rem 0;border-bottom:1px solid rgba(20,21,26,.18)}
+  @media (min-width:620px){ .row{grid-template-columns:1fr 1fr;gap:1.5rem;align-items:baseline} }
+  .row b{font-family:var(--body);font-weight:700;font-size:1.02em}
+  .row span{font-family:var(--mono);font-size:.82rem;color:var(--violet);letter-spacing:.02em}
+
+  .end{margin-top:3rem;font-family:var(--mono);font-size:.74rem;letter-spacing:.16em;
+       text-transform:uppercase;color:var(--muted)}
+
+  a{color:var(--violet)}
+  :focus-visible{outline:3px solid var(--pink);outline-offset:3px}
+
+html[lang="zh-CN"] body{font-family:"PingFang SC","Microsoft YaHei","Noto Sans CJK SC",system-ui,sans-serif}
+html[lang="zh-CN"] h1,html[lang="zh-CN"] h2,html[lang="zh-CN"] h3{line-height:1.2;letter-spacing:0}
+</style>
+<!-- eli5:head:start -->
+<link rel="alternate" hreflang="en" href="rl-pipeline-explainer.en.html">
+<link rel="alternate" hreflang="zh-CN" href="rl-pipeline-explainer.zh-CN.html">
+<link rel="stylesheet" href="language.css">
+<script src="language.js" defer></script>
+<!-- eli5:head:end -->
+</head>
+<body>
+<!-- eli5:nav:start -->
+<div class="eli5-site-nav" role="navigation" aria-label="图解导航与语言选择">
+  <a class="eli5-nav-home" href="index.html?lang=zh-CN">← 图解目录</a>
+  <div class="eli5-languages">
+    <a href="rl-pipeline-explainer.zh-CN.html" data-language="zh-CN" lang="zh-CN" hreflang="zh-CN" aria-current="page">简体中文</a>
+    <a href="rl-pipeline-explainer.en.html" data-language="en" lang="en" hreflang="en">English</a>
+  </div>
+</div>
+<!-- eli5:nav:end -->
+<script>document.documentElement.className='js';</script>
+
+<!-- ============ HERO ============ -->
+<header class="hero" id="top">
+  <span class="reg reg-tl" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="7" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M12 0v24M0 12h24" stroke="currentColor" stroke-width="1.5"/></svg></span>
+  <span class="reg reg-tr" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="7" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M12 0v24M0 12h24" stroke="currentColor" stroke-width="1.5"/></svg></span>
+
+  <div class="wrap">
+    <p class="eyebrow">用反馈训练语言模型</p>
+    <h1 class="stack">
+      <span class="w1">尝试。</span>
+      <span class="w2">评分。</span>
+      <span class="w3">重复。</span>
+    </h1>
+    <div class="hero-foot">
+      <p>只会预测下一个词的模型，还没准备好帮助人完成任务。下面来看看，它如何通过一次次评分学会做得更好。</p>
+      <p class="scroll-note">向下滚动 ↓ 共 8 部分</p>
+    </div>
+  </div>
+</header>
+
+<main>
+
+<!-- ============ 0. THE RAW MODEL ============ -->
+<section class="pnl">
+  <div class="wrap grid">
+    <div class="art">
+      <svg class="plate" viewBox="0 0 400 330" role="img" aria-label="装满文本的盒子，输出端冒出一个问号">
+        <g class="ink blue" fill="var(--blue)">
+          <rect x="55" y="92" width="290" height="132" rx="20"/>
+          <path d="M200 232 v22" stroke="var(--blue)" stroke-width="6"/>
+          <path d="M200 262 l-9-14 h18 z"/>
+        </g>
+        <g class="ink pink" fill="var(--pink)">
+          <rect x="60" y="8" width="70" height="9" rx="4.5"/>
+          <rect x="150" y="8" width="120" height="9" rx="4.5"/>
+          <rect x="288" y="8" width="52" height="9" rx="4.5"/>
+          <rect x="40" y="32" width="110" height="9" rx="4.5"/>
+          <rect x="168" y="32" width="60" height="9" rx="4.5"/>
+          <rect x="246" y="32" width="104" height="9" rx="4.5"/>
+          <rect x="78" y="56" width="86" height="9" rx="4.5"/>
+          <rect x="182" y="56" width="132" height="9" rx="4.5"/>
+        </g>
+        <g fill="var(--paper)" opacity=".92">
+          <rect x="80" y="118" width="130" height="8" rx="4"/>
+          <rect x="222" y="118" width="94" height="8" rx="4"/>
+          <rect x="80" y="140" width="86" height="8" rx="4"/>
+          <rect x="180" y="140" width="136" height="8" rx="4"/>
+          <rect x="80" y="162" width="152" height="8" rx="4"/>
+          <rect x="246" y="162" width="70" height="8" rx="4"/>
+          <rect x="80" y="184" width="104" height="8" rx="4"/>
+          <rect x="196" y="184" width="60" height="8" rx="4"/>
+        </g>
+        <g class="ink pink">
+          <path d="M132 268 h136 a14 14 0 0 1 14 14 v34 a14 14 0 0 1 -14 14 h-96 l-22 14 v-14 h-18 a14 14 0 0 1 -14 -14 v-34 a14 14 0 0 1 14 -14 z" fill="none" stroke="var(--pink)" stroke-width="6" stroke-linejoin="round"/>
+          <text class="lbl-big" x="200" y="309" text-anchor="middle" fill="var(--pink)">?</text>
+        </g>
+      </svg>
+    </div>
+    <div class="txt">
+      <p class="eyebrow rise">在这一切开始之前</p>
+      <h2 class="rise">它已经读过<br>海量文本。</h2>
+      <p class="lede rise">但它仍不清楚你真正想要什么回答，只知道哪些词通常跟在哪些词后面。</p>
+      <p class="tag rise">基础模型 · 预训练</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 1. SFT ============ -->
+<section class="pnl flip">
+  <div class="wrap grid">
+    <div class="art">
+      <svg class="plate" viewBox="0 0 400 330" role="img" aria-label="人工编写的回答卡被复制到模型中">
+        <g class="ink pink">
+          <rect x="14" y="76" width="140" height="176" rx="14" fill="none" stroke="var(--pink)" stroke-width="6"/>
+          <g fill="var(--pink)">
+            <rect x="36" y="106" width="96" height="9" rx="4.5"/>
+            <rect x="36" y="130" width="70" height="9" rx="4.5"/>
+            <rect x="36" y="154" width="88" height="9" rx="4.5"/>
+            <rect x="36" y="178" width="54" height="9" rx="4.5"/>
+          </g>
+          <text class="lbl-sm" x="84" y="278" text-anchor="middle" fill="var(--pink)">人工编写</text>
+        </g>
+        <g class="ink blue" fill="var(--blue)">
+          <path d="M170 164 h44" stroke="var(--blue)" stroke-width="7"/>
+          <path d="M226 164 l-16 -10 v20 z"/>
+          <rect x="240" y="76" width="146" height="176" rx="16"/>
+          <text class="lbl-sm" x="313" y="278" text-anchor="middle" fill="var(--blue)">模型模仿</text>
+        </g>
+        <g fill="var(--paper)">
+          <rect x="264" y="106" width="96" height="9" rx="4.5"/>
+          <rect x="264" y="130" width="70" height="9" rx="4.5"/>
+          <rect x="264" y="154" width="88" height="9" rx="4.5"/>
+          <rect x="264" y="178" width="54" height="9" rx="4.5"/>
+        </g>
+        <g class="ink pink">
+          <text class="lbl" x="200" y="42" text-anchor="middle" fill="var(--pink)">× 100,000</text>
+        </g>
+      </svg>
+    </div>
+    <div class="txt">
+      <p class="eyebrow rise">阶段 01</p>
+      <h2 class="rise">给它看<br>好回答。</h2>
+      <p class="lede rise">人们写出理想回答的样子，模型反复练习模仿，直到熟悉这种表达方式。</p>
+      <p class="tag rise">监督微调</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 2. PREFERENCES ============ -->
+<section class="pnl">
+  <div class="wrap grid">
+    <div class="art">
+      <svg class="plate" viewBox="0 0 400 330" role="img" aria-label="两个候选回答并排展示，其中一个被选中">
+        <g class="ink blue">
+          <path d="M22 44 h150 a14 14 0 0 1 14 14 v122 a14 14 0 0 1 -14 14 h-118 l-24 20 v-20 h-8 a14 14 0 0 1 -14 -14 v-122 a14 14 0 0 1 14 -14 z" fill="none" stroke="var(--blue)" stroke-width="6" stroke-linejoin="round"/>
+          <path d="M228 44 h150 a14 14 0 0 1 14 14 v122 a14 14 0 0 1 -14 14 h-118 l-24 20 v-20 h-8 a14 14 0 0 1 -14 -14 v-122 a14 14 0 0 1 14 -14 z" fill="none" stroke="var(--blue)" stroke-width="6" stroke-linejoin="round"/>
+          <g fill="var(--blue)">
+            <rect x="42" y="78" width="104" height="9" rx="4.5"/>
+            <rect x="42" y="102" width="76" height="9" rx="4.5"/>
+            <rect x="42" y="126" width="118" height="9" rx="4.5"/>
+            <rect x="248" y="78" width="118" height="9" rx="4.5"/>
+            <rect x="248" y="102" width="88" height="9" rx="4.5"/>
+            <rect x="248" y="126" width="106" height="9" rx="4.5"/>
+          </g>
+          <text class="lbl" x="42" y="30" fill="var(--blue)">A</text>
+          <text class="lbl" x="248" y="30" fill="var(--blue)">B</text>
+        </g>
+        <g class="ink pink">
+          <circle cx="303" cy="252" r="40" fill="var(--pink)"/>
+          <path d="M285 252 l13 14 l24 -30" fill="none" stroke="var(--paper)" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+          <text class="lbl-sm" x="303" y="316" text-anchor="middle" fill="var(--pink)">人工选择</text>
+        </g>
+        <g class="ink blue" opacity=".45">
+          <path d="M78 232 l38 38 M116 232 l-38 38" stroke="var(--blue)" stroke-width="8" stroke-linecap="round"/>
+        </g>
+      </svg>
+    </div>
+    <div class="txt">
+      <p class="eyebrow rise">阶段 02</p>
+      <h2 class="rise">让人比较<br>哪个更好。</h2>
+      <p class="lede rise">模型针对同一个问题写出两个回答，由人选出更好的一个，不必解释原因。</p>
+      <p class="tag rise">偏好数据</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 3. REWARD MODEL ============ -->
+<section class="pnl flip">
+  <div class="wrap grid">
+    <div class="art">
+      <svg class="plate" viewBox="0 0 400 330" role="img" aria-label="一台读取回答并给出分数的机器">
+        <g class="ink blue" fill="var(--blue)">
+          <rect x="92" y="58" width="290" height="200" rx="20"/>
+          <path d="M14 158 h56" stroke="var(--blue)" stroke-width="7"/>
+          <path d="M82 158 l-16 -10 v20 z"/>
+        </g>
+        <g fill="none" stroke="var(--paper)" stroke-width="9" stroke-linecap="round">
+          <path d="M162 196 a75 75 0 0 1 150 0"/>
+        </g>
+        <g stroke="var(--paper)" stroke-width="5" stroke-linecap="round" opacity=".85">
+          <path d="M170 160 l-14 -3"/><path d="M188 124 l-11 -10"/>
+          <path d="M237 108 l-3 -14"/><path d="M286 124 l11 -10"/>
+          <path d="M304 160 l14 -3"/>
+        </g>
+        <g class="ink pink">
+          <path d="M237 196 L281 141" stroke="var(--pink)" stroke-width="9" stroke-linecap="round"/>
+          <circle cx="237" cy="196" r="13" fill="var(--pink)"/>
+          <text class="lbl-big" x="237" y="238" text-anchor="middle" fill="var(--pink)">8.2</text>
+          <text class="lbl-sm" x="237" y="300" text-anchor="middle" fill="var(--pink)">每次回答，都能自动评分</text>
+        </g>
+      </svg>
+    </div>
+    <div class="txt">
+      <p class="eyebrow rise">阶段 03</p>
+      <h2 class="rise">训练一个<br>评分员。</h2>
+      <p class="lede rise">另一个模型学习成千上万个人工选择，直到能自己预测人类偏好，并在很短的时间内给出分数。</p>
+      <p class="tag rise">奖励模型</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 4. THE LOOP (focus) ============ -->
+<section class="pnl focus no-multiply">
+  <div class="wrap grid">
+    <div class="art">
+      <svg class="plate" viewBox="0 0 400 330" role="img" aria-label="三个步骤组成循环：尝试、评分、微调，不断重复">
+        <g class="ink" fill="none" stroke="var(--paper)" stroke-width="7" stroke-linecap="round">
+          <path d="M252.5 71.1 A105 105 0 0 1 305 162"/>
+          <path d="M252.5 252.9 A105 105 0 0 1 147.5 252.9"/>
+          <path d="M95 162 A105 105 0 0 1 147.5 71.1"/>
+        </g>
+        <g class="ink" fill="var(--paper)">
+          <path d="M0,-10 L15,0 L0,10 Z" transform="translate(305,162) rotate(90)"/>
+          <path d="M0,-10 L15,0 L0,10 Z" transform="translate(147.5,252.9) rotate(210)"/>
+          <path d="M0,-10 L15,0 L0,10 Z" transform="translate(147.5,71.1) rotate(330)"/>
+        </g>
+        <g class="ink">
+          <circle cx="200" cy="57" r="48" fill="var(--yellow)"/>
+          <text class="lbl" x="200" y="63" text-anchor="middle" fill="var(--ink)">尝试</text>
+        </g>
+        <g class="ink pink">
+          <circle cx="291" cy="214" r="48" fill="var(--pink)"/>
+          <text class="lbl" x="291" y="220" text-anchor="middle" fill="var(--ink)">评分</text>
+        </g>
+        <g class="ink">
+          <circle cx="109" cy="214" r="48" fill="var(--paper)"/>
+          <text class="lbl" x="109" y="220" text-anchor="middle" fill="var(--ink)">微调</text>
+        </g>
+        <g class="ink">
+          <text class="lbl-sm" x="200" y="156" text-anchor="middle" fill="var(--yellow)">重复</text>
+          <text class="lbl-big" x="200" y="188" text-anchor="middle" fill="var(--paper)">1,000,000×</text>
+        </g>
+      </svg>
+    </div>
+    <div class="txt">
+      <p class="eyebrow rise">阶段 04 · 核心动力</p>
+      <h2 class="rise">现在开始<br>循环。</h2>
+      <p class="lede rise">模型作答，评分员打分。那些带来高分的做法，下次出现的概率会略微提高。最后这一步，就是学习。</p>
+      <p class="tag rise">PPO · GRPO · 策略更新</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 5. THE LEASH ============ -->
+<section class="pnl">
+  <div class="wrap grid">
+    <div class="art">
+      <svg class="plate" viewBox="0 0 400 330" role="img" aria-label="学习模型正远离冻结副本，弹簧将它拉回">
+        <g class="ink blue">
+          <circle cx="86" cy="150" r="52" fill="var(--blue)"/>
+          <text class="lbl-sm" x="86" y="230" text-anchor="middle" fill="var(--blue)">冻结副本</text>
+          <g stroke="var(--paper)" stroke-width="6" stroke-linecap="round">
+            <path d="M68 150 h36"/><path d="M86 132 v36"/>
+          </g>
+        </g>
+        <g class="ink" stroke="var(--violet)" stroke-width="6" fill="none" stroke-linejoin="round">
+          <path d="M138 150 l16 -22 l24 44 l24 -44 l24 44 l24 -44 l16 22"/>
+        </g>
+        <g class="ink pink">
+          <circle cx="318" cy="150" r="52" fill="var(--pink)"/>
+          <text class="lbl-sm" x="318" y="230" text-anchor="middle" fill="var(--pink)">学习模型</text>
+          <path d="M300 288 h-90" stroke="var(--pink)" stroke-width="7"/>
+          <path d="M196 288 l16 -10 v20 z"/>
+          <text class="lbl-sm" x="318" y="294" fill="var(--pink)">拉回</text>
+        </g>
+      </svg>
+    </div>
+    <div class="txt">
+      <p class="eyebrow eyebrow--alt rise">约束机制</p>
+      <h2 class="rise">给它系上<br>牵引绳。</h2>
+      <p class="lede rise">如果过度追求分数，模型可能忘记正常表达。因此旁边放着一份参数固定的旧版本副本，当它偏离太远时，就把它拉回来。</p>
+      <p class="tag rise">参考模型 · KL 惩罚</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 6. REWARD HACKING ============ -->
+<section class="pnl flip">
+  <div class="wrap grid">
+    <div class="art">
+      <svg class="plate" viewBox="0 0 400 330" role="img" aria-label="一份堆砌重复内容的回答获得满分">
+        <g class="ink blue">
+          <rect x="16" y="26" width="164" height="290" rx="14" fill="none" stroke="var(--blue)" stroke-width="6"/>
+          <g fill="var(--blue)" opacity=".75">
+            <rect x="38" y="52" width="118" height="8" rx="4"/><rect x="38" y="72" width="118" height="8" rx="4"/>
+            <rect x="38" y="92" width="118" height="8" rx="4"/><rect x="38" y="112" width="118" height="8" rx="4"/>
+            <rect x="38" y="132" width="118" height="8" rx="4"/><rect x="38" y="152" width="118" height="8" rx="4"/>
+            <rect x="38" y="172" width="118" height="8" rx="4"/><rect x="38" y="192" width="118" height="8" rx="4"/>
+            <rect x="38" y="212" width="118" height="8" rx="4"/><rect x="38" y="232" width="118" height="8" rx="4"/>
+            <rect x="38" y="252" width="118" height="8" rx="4"/><rect x="38" y="272" width="118" height="8" rx="4"/>
+          </g>
+        </g>
+        <g class="ink pink">
+          <path d="M290 40 l14 30 l32 -14 l-8 34 l34 8 l-28 20 l24 26 l-35 -3 l3 35 l-26 -24 l-20 28 l-8 -34 l-34 8 l14 -32 l-30 -14 l30 -14 l-14 -32 l34 8 l8 -34 z" fill="var(--pink)"/>
+          <text class="lbl-big" x="292" y="132" text-anchor="middle" fill="var(--paper)">10/10</text>
+          <text class="lbl-sm" x="292" y="242" text-anchor="middle" fill="var(--pink)">重复堆话，</text>
+          <text class="lbl-sm" x="292" y="262" text-anchor="middle" fill="var(--pink)">照拿满分</text>
+        </g>
+      </svg>
+    </div>
+    <div class="txt">
+      <p class="eyebrow eyebrow--alt rise">失败模式</p>
+      <h2 class="rise">它会尝试<br>钻空子。</h2>
+      <p class="lede rise">模型会寻找最容易让评分员给高分的做法，这不一定符合真正的任务目标。凑字数、奉承和自信地胡说，都可能在人们发现之前拿到高分。</p>
+      <p class="tag rise">奖励投机</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 7. THE RIG ============ -->
+<section class="pnl">
+  <div class="wrap grid">
+    <div class="art">
+      <svg class="plate" viewBox="0 0 400 330" role="img" aria-label="四个组件在一组机器上协同运行">
+        <g class="ink blue">
+          <rect x="16" y="18" width="172" height="96" rx="14" fill="var(--blue)"/>
+          <rect x="212" y="18" width="172" height="96" rx="14" fill="none" stroke="var(--blue)" stroke-width="6"/>
+          <rect x="212" y="140" width="172" height="96" rx="14" fill="var(--blue)"/>
+        </g>
+        <g class="ink pink">
+          <rect x="16" y="140" width="172" height="96" rx="14" fill="var(--pink)"/>
+        </g>
+        <text class="lbl" x="102" y="60" text-anchor="middle" fill="var(--paper)">学习模型</text>
+        <text class="lbl-sm" x="102" y="84" text-anchor="middle" fill="var(--paper)" opacity=".8">生成回答</text>
+        <text class="lbl" x="298" y="60" text-anchor="middle" fill="var(--blue)">冻结副本</text>
+        <text class="lbl-sm" x="298" y="84" text-anchor="middle" fill="var(--blue)" opacity=".8">限制偏离</text>
+        <text class="lbl" x="102" y="182" text-anchor="middle" fill="var(--paper)">评分模型</text>
+        <text class="lbl-sm" x="102" y="206" text-anchor="middle" fill="var(--paper)" opacity=".85">给出分数</text>
+        <text class="lbl" x="298" y="182" text-anchor="middle" fill="var(--paper)">训练程序</text>
+        <text class="lbl-sm" x="298" y="206" text-anchor="middle" fill="var(--paper)" opacity=".8">更新权重</text>
+        <g class="ink blue">
+          <rect x="16" y="266" width="368" height="46" rx="10" fill="none" stroke="var(--blue)" stroke-width="6"/>
+          <g stroke="var(--blue)" stroke-width="6">
+            <path d="M56 276 v26"/><path d="M96 276 v26"/><path d="M136 276 v26"/><path d="M176 276 v26"/>
+            <path d="M216 276 v26"/><path d="M256 276 v26"/><path d="M296 276 v26"/><path d="M336 276 v26"/>
+          </g>
+        </g>
+      </svg>
+    </div>
+    <div class="txt">
+      <p class="eyebrow rise">训练系统</p>
+      <h2 class="rise">四个组件，<br>同时运行。</h2>
+      <p class="lede rise">每一轮循环都需要这四个组件运行并相互配合。很多时候，主要开销都花在等待模型生成完回答，而不是更新参数。</p>
+      <p class="tag rise">采样 · 评分 · 更新</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ GLOSSARY ============ -->
+<section class="gloss">
+  <div class="wrap">
+    <p class="eyebrow">换成专业说法</p>
+    <h2>每个部分的<br>正式名称。</h2>
+    <div class="rows">
+      <div class="row"><b>先阅读海量文本</b><span>预训练 / 基础模型</span></div>
+      <div class="row"><b>模仿好回答</b><span>监督微调（SFT）</span></div>
+      <div class="row"><b>选择更好的回答</b><span>偏好数据</span></div>
+      <div class="row"><b>评分员</b><span>奖励模型</span></div>
+      <div class="row"><b>一轮完整尝试</b><span>一次采样轨迹（rollout）</span></div>
+      <div class="row"><b>优化循环</b><span>PPO / GRPO</span></div>
+      <div class="row"><b>牵引绳</b><span>KL 惩罚</span></div>
+      <div class="row"><b>冻结副本</b><span>参考模型</span></div>
+      <div class="row"><b>利用评分漏洞</b><span>奖励投机</span></div>
+      <div class="row"><b>检查模型是否真的进步</b><span>评估</span></div>
+    </div>
+    <p class="end">结束 · 尝试、评分、重复</p>
+  </div>
+</section>
+
+</main>
+
+<script>
+(function(){
+  var els = document.querySelectorAll('.hero, .pnl, .gloss');
+  if(!('IntersectionObserver' in window)){
+    els.forEach(function(e){ e.classList.add('in'); });
+    return;
+  }
+  var io = new IntersectionObserver(function(entries){
+    entries.forEach(function(en){
+      if(en.isIntersecting){ en.target.classList.add('in'); io.unobserve(en.target); }
+    });
+  }, { threshold: 0.22, rootMargin: '0px 0px -8% 0px' });
+  els.forEach(function(e){ io.observe(e); });
+  // hero should register immediately
+  requestAnimationFrame(function(){
+    var h = document.querySelector('.hero');
+    if(h) h.classList.add('in');
+  });
+})();
+</script>
+</body>
+</html>

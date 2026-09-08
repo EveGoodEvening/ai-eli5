@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Supervised fine-tuning — explained simply</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&family=Newsreader:ital,opsz,wght@0,6..72,300;0,6..72,400;1,6..72,300&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:#E9EDF3;
+  --card:#F7F9FC;
+  --ink:#15233F;
+  --pencil:#8B9AB2;
+  --rule:#D3DEEC;
+  --red:#C43F2C;
+  --good:#2C7A63;
+  --display:"Bricolage Grotesque","Helvetica Neue",Arial,sans-serif;
+  --body:"Newsreader",Georgia,serif;
+  --mono:"Space Mono",ui-monospace,"SFMono-Regular",Menlo,monospace;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0;
+  background-color:var(--paper);
+  background-image:repeating-linear-gradient(to bottom,transparent 0 39px,var(--rule) 39px 40px);
+  color:var(--ink);
+  font-family:var(--body);
+  font-weight:300;
+  line-height:1.45;
+  overflow-x:hidden;
+}
+/* the red margin rule — a copybook page */
+body::before{
+  content:"";
+  position:fixed;
+  top:0;bottom:0;left:clamp(14px,5vw,74px);
+  width:1.5px;
+  background:var(--red);
+  opacity:.45;
+  z-index:5;
+  pointer-events:none;
+}
+.page{
+  max-width:1080px;
+  margin:0 auto;
+  padding:0 clamp(30px,9vw,110px) 0 clamp(34px,10vw,120px);
+}
+section{padding:clamp(70px,11vh,130px) 0}
+.eyebrow{
+  font-family:var(--mono);
+  font-size:clamp(11px,1.6vw,13px);
+  letter-spacing:.22em;
+  text-transform:uppercase;
+  color:var(--red);
+  margin:0 0 22px;
+}
+h1{
+  font-family:var(--display);
+  font-weight:800;
+  font-size:clamp(3.1rem,12.5vw,8.4rem);
+  line-height:.87;
+  letter-spacing:-.035em;
+  margin:0;
+}
+h1 span{display:block}
+h1 .thin{font-weight:400;color:var(--pencil)}
+h2{
+  font-family:var(--display);
+  font-weight:600;
+  font-size:clamp(1.9rem,6vw,3.6rem);
+  line-height:1.02;
+  letter-spacing:-.028em;
+  margin:0 0 34px;
+  max-width:16ch;
+}
+.lede{
+  font-size:clamp(1.15rem,3.4vw,1.7rem);
+  line-height:1.35;
+  max-width:22ch;
+  margin:30px 0 0;
+  color:var(--ink);
+}
+.cap{
+  font-family:var(--mono);
+  font-size:clamp(11.5px,1.8vw,14px);
+  line-height:1.65;
+  color:var(--pencil);
+  margin:26px 0 0;
+  max-width:44ch;
+}
+.cap b{color:var(--ink);font-weight:700}
+
+/* ---------- hero ---------- */
+.hero{padding-top:clamp(56px,10vh,110px);padding-bottom:clamp(20px,4vh,40px)}
+.copybook{width:100%;height:auto;display:block;margin-top:clamp(34px,6vw,60px)}
+.copybook .paperline{stroke:var(--rule);stroke-width:1.4}
+.copybook .demo{stroke:var(--ink);stroke-width:5;fill:none;stroke-linecap:round}
+.copybook .try{stroke:var(--pencil);stroke-width:3.4;fill:none;stroke-linecap:round}
+.tag{font-family:var(--mono);font-size:12px;letter-spacing:.12em;text-transform:uppercase}
+.tag.ink{fill:var(--ink)}
+.tag.grey{fill:var(--pencil)}
+.tag.red{fill:var(--red)}
+.draw{stroke-dasharray:1200;stroke-dashoffset:1200;animation:draw 1.5s cubic-bezier(.2,.7,.3,1) forwards}
+.d1{animation-delay:.15s}.d2{animation-delay:.85s}.d3{animation-delay:1.35s}.d4{animation-delay:1.85s}
+@keyframes draw{to{stroke-dashoffset:0}}
+
+/* ---------- reveal ---------- */
+.rev{opacity:0;transform:translateY(26px);transition:opacity .7s ease,transform .7s cubic-bezier(.2,.7,.3,1)}
+.rev.in{opacity:1;transform:none}
+
+/* ---------- chat demo ---------- */
+.demo-stack{display:flex;flex-direction:column;gap:16px;max-width:640px}
+.bubble{
+  background:var(--card);
+  border:1.5px solid var(--rule);
+  border-radius:18px;
+  padding:clamp(18px,4vw,26px) clamp(20px,4vw,30px);
+}
+.bubble.ask{border-bottom-right-radius:4px;align-self:flex-start;width:100%}
+.who{font-family:var(--mono);font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--pencil);margin:0 0 10px}
+.ask p{margin:0;font-size:clamp(1.25rem,4.2vw,1.9rem);line-height:1.2}
+.say{
+  font-family:var(--mono);
+  font-size:clamp(.95rem,3vw,1.15rem);
+  line-height:1.75;
+  margin:0;
+}
+.fade{color:var(--pencil)}
+.bad{border-color:rgba(196,63,44,.5)}
+.good{border-color:rgba(44,122,99,.55)}
+.verdict{
+  font-family:var(--mono);font-size:12px;letter-spacing:.14em;text-transform:uppercase;
+  margin:14px 0 0;
+}
+.verdict.no{color:var(--red)}
+.verdict.yes{color:var(--good)}
+.arrow-down{display:block;margin:2px auto;width:34px;height:34px}
+
+/* ---------- cards ---------- */
+.split{display:grid;grid-template-columns:1fr;gap:clamp(30px,6vw,64px);align-items:center}
+@media(min-width:860px){.split{grid-template-columns:1fr 1fr}}
+.stack-svg{width:100%;height:auto;display:block}
+.badge{
+  display:inline-block;
+  font-family:var(--mono);font-weight:700;
+  font-size:clamp(12px,2vw,14px);letter-spacing:.1em;text-transform:uppercase;
+  border:1.5px solid var(--ink);border-radius:999px;
+  padding:9px 18px;margin-top:26px;
+}
+
+/* ---------- loop ---------- */
+.beats{display:grid;grid-template-columns:1fr;gap:clamp(24px,4vw,30px)}
+@media(min-width:760px){.beats{grid-template-columns:repeat(3,1fr)}}
+.beat{background:var(--card);border:1.5px solid var(--rule);border-radius:20px;padding:clamp(20px,3.4vw,26px)}
+.beat svg{width:100%;height:auto;display:block;margin-bottom:18px}
+.beat h3{
+  font-family:var(--display);font-weight:600;
+  font-size:clamp(1.05rem,3.4vw,1.35rem);line-height:1.15;letter-spacing:-.015em;margin:0;
+}
+.beat p{font-family:var(--mono);font-size:12.5px;line-height:1.6;color:var(--pencil);margin:10px 0 0}
+.loop-note{display:flex;align-items:center;gap:14px;margin-top:30px;flex-wrap:wrap}
+.loop-note span{font-family:var(--mono);font-size:clamp(12px,2vw,14px);letter-spacing:.1em;text-transform:uppercase;color:var(--red)}
+
+/* ---------- small print ---------- */
+.notes{border-top:2px solid var(--ink);margin-top:10px}
+.note{
+  display:grid;grid-template-columns:auto 1fr;gap:clamp(16px,4vw,34px);
+  padding:clamp(22px,4vw,32px) 0;border-bottom:1px solid var(--rule);
+  align-items:start;
+}
+.note .n{font-family:var(--mono);font-size:12px;color:var(--red);padding-top:8px}
+.note p{margin:0;font-size:clamp(1.1rem,3.6vw,1.6rem);line-height:1.28;max-width:26ch}
+.note em{font-style:italic;color:var(--pencil)}
+
+/* ---------- glossary ---------- */
+.glossary{padding-bottom:clamp(90px,14vh,150px)}
+.gl{display:grid;grid-template-columns:1fr;gap:20px}
+@media(min-width:720px){.gl{grid-template-columns:repeat(3,1fr)}}
+.gl div{border-top:1.5px solid var(--ink);padding-top:14px}
+.gl dt{font-family:var(--mono);font-weight:700;font-size:13px;letter-spacing:.06em;margin:0 0 8px}
+.gl dd{margin:0;font-size:15.5px;line-height:1.45;color:var(--pencil)}
+dl{margin:0}
+
+@media(prefers-reduced-motion:reduce){
+  .draw{animation:none;stroke-dashoffset:0}
+  .rev{opacity:1;transform:none;transition:none}
+}
+:focus-visible{outline:2.5px solid var(--red);outline-offset:3px}
+</style>
+<!-- eli5:head:start -->
+<link rel="alternate" hreflang="en" href="supervised-fine-tuning.en.html">
+<link rel="alternate" hreflang="zh-CN" href="supervised-fine-tuning.zh-CN.html">
+<link rel="stylesheet" href="language.css">
+<script src="language.js" defer></script>
+<!-- eli5:head:end -->
+</head>
+<body>
+<!-- eli5:nav:start -->
+<div class="eli5-site-nav" role="navigation" aria-label="Guide navigation and language">
+  <a class="eli5-nav-home" href="index.html?lang=en">← All guides</a>
+  <div class="eli5-languages">
+    <a href="supervised-fine-tuning.zh-CN.html" data-language="zh-CN" lang="zh-CN" hreflang="zh-CN">简体中文</a>
+    <a href="supervised-fine-tuning.en.html" data-language="en" lang="en" hreflang="en" aria-current="page">English</a>
+  </div>
+</div>
+<!-- eli5:nav:end -->
+<main class="page">
+
+  <!-- HERO -->
+  <section class="hero">
+    <p class="eyebrow">a plain-language guide</p>
+    <h1><span>Supervised</span><span class="thin">fine-tuning</span></h1>
+    <p class="lede">Show the model a good answer. Let it copy. Repeat.</p>
+
+    <svg class="copybook" viewBox="0 0 900 470" role="img" aria-label="A handwriting practice page. The top line is a teacher's neat example. The three lines below are a machine's attempts, each one closer to the example.">
+      <line class="paperline" x1="60" y1="120" x2="860" y2="120"/>
+      <line class="paperline" x1="60" y1="230" x2="860" y2="230"/>
+      <line class="paperline" x1="60" y1="330" x2="860" y2="330"/>
+      <line class="paperline" x1="60" y1="430" x2="860" y2="430"/>
+
+      <text class="tag ink" x="60" y="52">the answer we want</text>
+      <path class="demo draw d1" d="M70 118 C110 40,170 40,210 118 S310 196,350 118 S450 40,490 118 S590 196,630 118 S730 40,770 118 L850 118"/>
+
+      <text class="tag grey" x="60" y="172">try 1</text>
+      <path class="try draw d2" d="M70 228 C118 138,140 300,196 200 S258 108,318 252 S378 132,440 214 S492 296,552 156 S626 260,682 190 S780 250,850 208"/>
+
+      <text class="tag grey" x="60" y="278">try 2</text>
+      <path class="try draw d3" d="M70 328 C112 262,166 258,212 330 S304 400,352 320 S446 246,492 332 S584 396,632 322 S728 250,772 330 L850 328"/>
+
+      <text class="tag red" x="60" y="378">try 900,000</text>
+      <path class="try draw d4" d="M70 428 C110 352,170 350,210 428 S310 504,350 428 S450 350,490 428 S590 504,630 428 S730 350,770 428 L850 428"/>
+    </svg>
+    <p class="cap">That's the whole idea. Everything below is just detail.</p>
+  </section>
+
+  <!-- PROBLEM -->
+  <section class="rev">
+    <p class="eyebrow">the problem</p>
+    <h2>A fresh model doesn't answer you. It just keeps typing.</h2>
+    <div class="demo-stack">
+      <div class="bubble ask">
+        <p class="who">you</p>
+        <p>How do I boil an egg?</p>
+      </div>
+      <svg class="arrow-down" viewBox="0 0 40 40" aria-hidden="true"><path d="M20 4 L20 34 M10 25 L20 35 L30 25" fill="none" stroke="#8B9AB2" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <div class="bubble bad">
+        <p class="who">raw model</p>
+        <p class="say">How do I fry an egg?<br>How do I poach an egg?<br><span class="fade">How do I scramble an eg…</span></p>
+        <p class="verdict no">not wrong. just useless.</p>
+      </div>
+    </div>
+    <p class="cap">It was trained on piles of text to do exactly one thing: <b>guess the next word</b>. Nobody ever taught it that a question deserves a reply.</p>
+  </section>
+
+  <!-- THE FIX -->
+  <section class="rev">
+    <p class="eyebrow">the fix</p>
+    <div class="split">
+      <div>
+        <h2>So we show it what a good answer looks like.</h2>
+        <p class="cap">Each card holds a question and the reply we'd like back — written or checked by people. This pile is the <b>training data</b>.</p>
+        <p class="badge">50,000 cards, give or take</p>
+      </div>
+      <svg class="stack-svg" viewBox="0 0 460 380" role="img" aria-label="A fanned stack of cards. Each card has a question at the top and the wanted answer below it.">
+        <g transform="translate(40,40)">
+          <g transform="rotate(-7 180 150)" opacity=".35">
+            <rect x="0" y="0" width="330" height="230" rx="16" fill="#F7F9FC" stroke="#D3DEEC" stroke-width="2"/>
+          </g>
+          <g transform="rotate(-3.5 180 150)" opacity=".6">
+            <rect x="0" y="0" width="330" height="230" rx="16" fill="#F7F9FC" stroke="#D3DEEC" stroke-width="2"/>
+          </g>
+          <g>
+            <rect x="0" y="0" width="330" height="230" rx="16" fill="#F7F9FC" stroke="#15233F" stroke-width="2.4"/>
+            <text x="26" y="42" class="tag" fill="#8B9AB2" font-size="11">question</text>
+            <rect x="26" y="56" width="220" height="14" rx="7" fill="#15233F"/>
+            <rect x="26" y="78" width="150" height="14" rx="7" fill="#15233F"/>
+            <line x1="26" y1="112" x2="304" y2="112" stroke="#D3DEEC" stroke-width="2"/>
+            <text x="26" y="140" class="tag" fill="#2C7A63" font-size="11">answer we want</text>
+            <rect x="26" y="154" width="278" height="12" rx="6" fill="#2C7A63" opacity=".75"/>
+            <rect x="26" y="174" width="252" height="12" rx="6" fill="#2C7A63" opacity=".75"/>
+            <rect x="26" y="194" width="190" height="12" rx="6" fill="#2C7A63" opacity=".75"/>
+          </g>
+        </g>
+      </svg>
+    </div>
+  </section>
+
+  <!-- THE PRACTICE -->
+  <section class="rev">
+    <p class="eyebrow">the practice</p>
+    <h2>It copies. We correct. It adjusts.</h2>
+    <div class="beats">
+      <div class="beat">
+        <svg viewBox="0 0 200 120" aria-hidden="true">
+          <rect x="8" y="10" width="184" height="100" rx="14" fill="#EDF1F7" stroke="#D3DEEC" stroke-width="2"/>
+          <path d="M28 74 C46 34,60 100,80 62 S110 96,132 58 S158 88,176 66" fill="none" stroke="#8B9AB2" stroke-width="3.4" stroke-linecap="round"/>
+        </svg>
+        <h3>It writes its own answer.</h3>
+        <p>The model sees the question and takes a swing.</p>
+      </div>
+      <div class="beat">
+        <svg viewBox="0 0 200 120" aria-hidden="true">
+          <rect x="8" y="10" width="184" height="100" rx="14" fill="#EDF1F7" stroke="#D3DEEC" stroke-width="2"/>
+          <path d="M28 66 C48 26,64 26,84 66 S124 106,144 66 S172 34,180 52" fill="none" stroke="#15233F" stroke-width="3.4" stroke-linecap="round"/>
+          <path d="M28 74 C46 34,60 100,80 62 S110 96,132 58 S158 88,176 66" fill="none" stroke="#8B9AB2" stroke-width="3.4" stroke-linecap="round" opacity=".9"/>
+          <g stroke="#C43F2C" stroke-width="3" stroke-linecap="round">
+            <path d="M56 44 L72 96"/><path d="M72 44 L56 96"/>
+            <path d="M118 46 L134 92"/><path d="M134 46 L118 92"/>
+          </g>
+        </svg>
+        <h3>We compare it to ours.</h3>
+        <p>Every word it got wrong is measured.</p>
+      </div>
+      <div class="beat">
+        <svg viewBox="0 0 200 120" aria-hidden="true">
+          <rect x="8" y="10" width="184" height="100" rx="14" fill="#EDF1F7" stroke="#D3DEEC" stroke-width="2"/>
+          <g stroke="#D3DEEC" stroke-width="6" stroke-linecap="round">
+            <path d="M36 36 L164 36"/><path d="M36 62 L164 62"/><path d="M36 88 L164 88"/>
+          </g>
+          <g fill="#15233F"><circle cx="78" cy="36" r="9"/><circle cx="126" cy="62" r="9"/><circle cx="60" cy="88" r="9"/></g>
+          <g stroke="#C43F2C" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M92 36 L106 36 M100 30 L106 36 L100 42"/>
+            <path d="M140 62 L154 62 M148 56 L154 62 L148 68"/>
+            <path d="M74 88 L88 88 M82 82 L88 88 L82 94"/>
+          </g>
+        </svg>
+        <h3>We nudge its dials.</h3>
+        <p>Millions of internal settings shift a hair toward our answer.</p>
+      </div>
+    </div>
+    <div class="loop-note">
+      <svg width="42" height="42" viewBox="0 0 42 42" aria-hidden="true"><path d="M35 21a14 14 0 1 1-5-10.7" fill="none" stroke="#C43F2C" stroke-width="3" stroke-linecap="round"/><path d="M36 4v8h-8" fill="none" stroke="#C43F2C" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span>now do that a few million times</span>
+    </div>
+    <p class="cap">Nothing is being memorised word for word. The habit is what sticks: <b>when someone asks, answer them — like this</b>.</p>
+  </section>
+
+  <!-- RESULT -->
+  <section class="rev">
+    <p class="eyebrow">the result</p>
+    <h2>Now it answers.</h2>
+    <div class="demo-stack">
+      <div class="bubble ask">
+        <p class="who">you</p>
+        <p>How do I boil an egg?</p>
+      </div>
+      <svg class="arrow-down" viewBox="0 0 40 40" aria-hidden="true"><path d="M20 4 L20 34 M10 25 L20 35 L30 25" fill="none" stroke="#8B9AB2" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <div class="bubble good">
+        <p class="who">fine-tuned model</p>
+        <p class="say">Lower it into boiling water.<br>7 minutes for soft, 10 for hard.<br>Then straight into cold water.</p>
+        <p class="verdict yes">same knowledge. new manners.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- SMALL PRINT -->
+  <section class="rev">
+    <p class="eyebrow">the small print</p>
+    <div class="notes">
+      <div class="note"><span class="n">01</span><p>It copies your examples. <em>Sloppy examples, sloppy model.</em></p></div>
+      <div class="note"><span class="n">02</span><p>It mostly picks up manners, not new facts. <em>Style is cheap to teach. Knowledge isn't.</em></p></div>
+      <div class="note"><span class="n">03</span><p>It's usually step one. <em>Next comes preference training, where people rank answers instead of writing them.</em></p></div>
+    </div>
+  </section>
+
+  <!-- GLOSSARY -->
+  <section class="glossary rev">
+    <p class="eyebrow">three words you'll hear</p>
+    <dl class="gl">
+      <div><dt>base model</dt><dd>The raw next-word guesser, before any of this.</dd></div>
+      <div><dt>dataset</dt><dd>The pile of cards: questions with the answers we want.</dd></div>
+      <div><dt>fine-tune</dt><dd>Adjust a model you already have, instead of building one from scratch.</dd></div>
+    </dl>
+  </section>
+
+</main>
+
+<script>
+(function(){
+  var els = document.querySelectorAll('.rev');
+  if (!('IntersectionObserver' in window) || window.matchMedia('(prefers-reduced-motion: reduce)').matches){
+    els.forEach(function(el){ el.classList.add('in'); });
+    return;
+  }
+  var io = new IntersectionObserver(function(entries){
+    entries.forEach(function(e){
+      if (e.isIntersecting){ e.target.classList.add('in'); io.unobserve(e.target); }
+    });
+  }, { rootMargin: '0px 0px -12% 0px', threshold: 0.08 });
+  els.forEach(function(el){ io.observe(el); });
+})();
+</script>
+</body>
+</html>

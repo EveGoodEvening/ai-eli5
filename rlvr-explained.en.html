@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RLVR — explained with pictures</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Karla:wght@400;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#E9EAE4;
+    --blue:#1A4FC4;
+    --pink:#FF4B9E;
+    --yellow:#FFC61E;
+    --ink:#141A2E;
+    --rule:rgba(20,26,46,.16);
+  }
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    margin:0;
+    background:var(--paper);
+    color:var(--ink);
+    font-family:'Karla',system-ui,sans-serif;
+    font-size:clamp(16px,1.1vw + 12px,20px);
+    line-height:1.5;
+    overflow-x:hidden;
+  }
+  /* paper grain — the two-ink print feel */
+  .grain{
+    position:fixed;inset:0;pointer-events:none;z-index:9;
+    opacity:.5;mix-blend-mode:multiply;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)' opacity='.35'/%3E%3C/svg%3E");
+  }
+  .wrap{max-width:1080px;margin:0 auto;padding:0 24px}
+
+  /* ---------- hero ---------- */
+  .hero{padding:14vh 0 10vh;position:relative}
+  .eyebrow{
+    font-family:'Space Mono',monospace;font-size:.72rem;letter-spacing:.22em;
+    text-transform:uppercase;color:var(--blue);margin:0 0 18px;
+  }
+  h1{
+    font-family:'Bricolage Grotesque','Karla',sans-serif;font-weight:800;
+    font-size:clamp(5.5rem,26vw,17rem);line-height:.78;letter-spacing:-.04em;
+    margin:0;color:var(--blue);position:relative;
+    text-wrap:balance;
+  }
+  /* misregistration: the pink plate printed a hair off */
+  h1::before{
+    content:"RLVR";position:absolute;left:6px;top:6px;
+    color:var(--pink);mix-blend-mode:multiply;z-index:-1;
+  }
+  .lede{
+    font-size:clamp(1.3rem,3.4vw,2.1rem);line-height:1.25;font-weight:600;
+    max-width:16ch;margin:36px 0 0;
+  }
+  .stamp{
+    position:absolute;right:4vw;top:22vh;
+    width:clamp(130px,20vw,230px);
+    transform:rotate(-14deg);
+  }
+  .scroll-cue{
+    font-family:'Space Mono',monospace;font-size:.72rem;letter-spacing:.2em;
+    text-transform:uppercase;color:var(--ink);opacity:.5;margin-top:12vh;
+  }
+
+  /* ---------- panels ---------- */
+  .panel{padding:9vh 0;border-top:1px solid var(--rule)}
+  .panel h2{
+    font-family:'Bricolage Grotesque','Karla',sans-serif;font-weight:800;
+    font-size:clamp(2.1rem,6.4vw,4.4rem);line-height:1;letter-spacing:-.03em;
+    margin:0;max-width:15ch;text-wrap:balance;
+  }
+  .panel .sub{
+    font-family:'Space Mono',monospace;font-size:.86rem;line-height:1.6;
+    max-width:34ch;margin:20px 0 0;color:var(--ink);opacity:.75;
+  }
+  figure{margin:44px 0 0}
+  figure svg{width:100%;height:auto;display:block}
+
+  /* ---------- closing card ---------- */
+  .card{
+    margin:9vh 0 12vh;border:3px solid var(--blue);padding:clamp(28px,5vw,56px);
+    position:relative;background:transparent;
+  }
+  .card h2{
+    font-family:'Bricolage Grotesque','Karla',sans-serif;font-weight:800;
+    font-size:clamp(1.9rem,5.6vw,3.6rem);line-height:1.02;letter-spacing:-.03em;margin:0;
+    max-width:18ch;
+  }
+  .cols{display:flex;flex-wrap:wrap;gap:12px 44px;margin-top:34px}
+  .col h3{
+    font-family:'Space Mono',monospace;font-size:.7rem;letter-spacing:.2em;
+    text-transform:uppercase;margin:0 0 10px;
+  }
+  .col.yes h3{color:var(--blue)}
+  .col.no h3{color:var(--pink)}
+  .col p{margin:0;font-size:1.05rem;line-height:1.45;max-width:22ch}
+  footer{
+    font-family:'Space Mono',monospace;font-size:.68rem;letter-spacing:.16em;
+    text-transform:uppercase;opacity:.45;padding-bottom:8vh;
+  }
+
+  /* ---------- svg ink classes ---------- */
+  svg .b{fill:var(--blue)}
+  svg .p{fill:var(--pink)}
+  svg .y{fill:var(--yellow)}
+  svg .w{fill:var(--paper)}
+  svg .k{fill:var(--ink)}
+  svg .sb{fill:none;stroke:var(--blue);stroke-width:4;stroke-linecap:round}
+  svg .sp{fill:none;stroke:var(--pink);stroke-width:4;stroke-linecap:round}
+  svg .sk{fill:none;stroke:var(--ink);stroke-width:3;stroke-linecap:round}
+  svg text{font-family:'Space Mono',monospace;font-size:20px}
+  svg .lbl{font-size:15px;letter-spacing:.14em}
+  svg .big{font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:44px}
+  #dotfill circle{fill:var(--pink)}
+
+  /* ---------- motion ---------- */
+  .rise{opacity:0;transform:translateY(26px)}
+  .rise.in{opacity:1;transform:none;transition:opacity .7s ease,transform .7s cubic-bezier(.2,.7,.3,1)}
+  .stamp{animation:land .9s cubic-bezier(.2,1.4,.4,1) .35s both}
+  @keyframes land{
+    from{opacity:0;transform:rotate(-30deg) scale(2.4)}
+    to{opacity:1;transform:rotate(-14deg) scale(1)}
+  }
+  @media (prefers-reduced-motion:reduce){
+    .rise,.rise.in{opacity:1;transform:none;transition:none}
+    .stamp{animation:none}
+  }
+  @media (max-width:640px){
+    .stamp{position:static;margin:26px 0 0;transform:rotate(-8deg)}
+    .hero{padding:8vh 0 6vh}
+  }
+</style>
+<!-- eli5:head:start -->
+<link rel="alternate" hreflang="en" href="rlvr-explained.en.html">
+<link rel="alternate" hreflang="zh-CN" href="rlvr-explained.zh-CN.html">
+<link rel="stylesheet" href="language.css">
+<script src="language.js" defer></script>
+<!-- eli5:head:end -->
+</head>
+<body>
+<!-- eli5:nav:start -->
+<div class="eli5-site-nav" role="navigation" aria-label="Guide navigation and language">
+  <a class="eli5-nav-home" href="index.html?lang=en">← All guides</a>
+  <div class="eli5-languages">
+    <a href="rlvr-explained.zh-CN.html" data-language="zh-CN" lang="zh-CN" hreflang="zh-CN">简体中文</a>
+    <a href="rlvr-explained.en.html" data-language="en" lang="en" hreflang="en" aria-current="page">English</a>
+  </div>
+</div>
+<!-- eli5:nav:end -->
+<div class="grain" aria-hidden="true"></div>
+
+<!-- shared ink defs -->
+<svg width="0" height="0" aria-hidden="true" style="position:absolute">
+  <defs>
+    <pattern id="dotfill" width="9" height="9" patternUnits="userSpaceOnUse"><circle cx="2.5" cy="2.5" r="1.9"/></pattern>
+    <marker id="ab" markerWidth="9" markerHeight="9" refX="6" refY="4.5" orient="auto">
+      <path d="M0 0 L9 4.5 L0 9 Z" fill="#1A4FC4"/></marker>
+    <marker id="ap" markerWidth="9" markerHeight="9" refX="6" refY="4.5" orient="auto">
+      <path d="M0 0 L9 4.5 L0 9 Z" fill="#FF4B9E"/></marker>
+    <marker id="ak" markerWidth="9" markerHeight="9" refX="6" refY="4.5" orient="auto">
+      <path d="M0 0 L9 4.5 L0 9 Z" fill="#141A2E"/></marker>
+  </defs>
+</svg>
+
+<header class="hero wrap">
+  <p class="eyebrow">Reinforcement Learning with Verifiable Rewards</p>
+  <h1>RLVR</h1>
+  <p class="lede">Teaching an AI with an answer key.</p>
+
+  <svg class="stamp" viewBox="0 0 200 200" aria-hidden="true">
+    <circle cx="100" cy="100" r="92" class="sb" stroke-width="7"/>
+    <circle cx="100" cy="100" r="78" class="sb" stroke-width="2"/>
+    <path d="M62 104 L88 130 L142 72" class="sb" stroke-width="14" stroke-linejoin="round"/>
+  </svg>
+
+  <p class="scroll-cue">Scroll ↓</p>
+</header>
+
+<main class="wrap">
+
+  <!-- 1 -->
+  <section class="panel rise">
+    <h2>It writes many answers.</h2>
+    <p class="sub">One question. Twenty tries. They don't all match.</p>
+    <figure>
+      <svg viewBox="0 0 800 340" role="img" aria-label="A model box firing five different answers to the same question">
+        <rect x="20" y="118" width="200" height="110" rx="10" class="b"/>
+        <text x="120" y="180" class="w lbl" text-anchor="middle" style="font-size:19px">MODEL</text>
+        <g class="sk" stroke-width="3">
+          <path d="M232 150 L330 60" marker-end="url(#ak)"/>
+          <path d="M232 162 L330 128" marker-end="url(#ak)"/>
+          <path d="M232 173 L330 196" marker-end="url(#ak)"/>
+          <path d="M232 185 L330 264" marker-end="url(#ak)"/>
+        </g>
+        <g>
+          <rect x="348" y="26" width="180" height="62" rx="31" class="w" stroke="#141A2E" stroke-width="3"/>
+          <text x="438" y="66" text-anchor="middle">= 144</text>
+          <rect x="348" y="98" width="180" height="62" rx="31" class="w" stroke="#141A2E" stroke-width="3"/>
+          <text x="438" y="138" text-anchor="middle">= 142</text>
+          <rect x="348" y="170" width="180" height="62" rx="31" class="w" stroke="#141A2E" stroke-width="3"/>
+          <text x="438" y="210" text-anchor="middle">= 144</text>
+          <rect x="348" y="242" width="180" height="62" rx="31" class="w" stroke="#141A2E" stroke-width="3"/>
+          <text x="438" y="282" text-anchor="middle">= 121</text>
+        </g>
+        <text x="600" y="150" class="k lbl">WHICH ONE</text>
+        <text x="600" y="176" class="k lbl">IS RIGHT?</text>
+        <circle cx="700" cy="240" r="34" fill="url(#dotfill)"/>
+      </svg>
+    </figure>
+  </section>
+
+  <!-- 2 -->
+  <section class="panel rise">
+    <h2>Someone has to grade them.</h2>
+    <p class="sub">A human grader is slow, costs money, and two graders disagree.</p>
+    <figure>
+      <svg viewBox="0 0 800 320" role="img" aria-label="A slow human grader on the left, an instant answer key on the right">
+        <!-- human -->
+        <circle cx="120" cy="98" r="38" class="p"/>
+        <path d="M52 210 a68 66 0 0 1 136 0 Z" class="p"/>
+        <text x="120" y="262" text-anchor="middle" class="k lbl">A PERSON</text>
+        <text x="120" y="290" text-anchor="middle" class="k lbl" style="opacity:.6">SLOW · COSTLY</text>
+        <g class="sp"><path d="M212 150 h56" marker-end="url(#ap)"/></g>
+        <circle cx="320" cy="150" r="44" class="sp"/>
+        <path d="M320 122 V152 L342 164" class="sp"/>
+
+        <!-- divider -->
+        <path d="M420 20 V300" stroke="#141A2E" stroke-width="2" stroke-dasharray="10 12" opacity=".45"/>
+
+        <!-- key -->
+        <rect x="470" y="70" width="230" height="140" rx="12" class="b"/>
+        <text x="585" y="128" text-anchor="middle" class="w lbl" style="font-size:14px">ANSWER KEY</text>
+        <text x="585" y="176" text-anchor="middle" class="w big" style="font-size:38px">144</text>
+        <text x="585" y="262" text-anchor="middle" class="k lbl">A CHECKER</text>
+        <text x="585" y="290" text-anchor="middle" class="k lbl" style="opacity:.6">INSTANT · CERTAIN</text>
+        <path d="M712 62 L742 92 L790 36" class="sb" stroke-width="12" stroke-linejoin="round"/>
+      </svg>
+    </figure>
+  </section>
+
+  <!-- 3 -->
+  <section class="panel rise">
+    <h2>“Verifiable” means a machine can check it.</h2>
+    <p class="sub">Maths has an answer. Code has tests. Poems have neither.</p>
+    <figure>
+      <svg viewBox="0 0 800 300" role="img" aria-label="Three cards: a sum and code both pass the checker, a poem cannot be checked">
+        <g>
+          <rect x="10" y="30" width="240" height="180" rx="10" class="w" stroke="#1A4FC4" stroke-width="4"/>
+          <text x="130" y="130" text-anchor="middle" class="k" style="font-size:26px">12 × 12</text>
+          <path d="M60 250 L92 282 L162 206" class="sb" stroke-width="13" stroke-linejoin="round"/>
+        </g>
+        <g>
+          <rect x="280" y="30" width="240" height="180" rx="10" class="w" stroke="#1A4FC4" stroke-width="4"/>
+          <rect x="312" y="70" width="176" height="14" rx="7" class="b"/>
+          <rect x="312" y="98" width="130" height="14" rx="7" class="b"/>
+          <rect x="312" y="126" width="158" height="14" rx="7" class="b"/>
+          <text x="400" y="186" text-anchor="middle" class="k lbl">5 / 5 TESTS PASS</text>
+          <path d="M330 250 L362 282 L432 206" class="sb" stroke-width="13" stroke-linejoin="round"/>
+        </g>
+        <g>
+          <rect x="550" y="30" width="240" height="180" rx="10" class="w" stroke="#FF4B9E" stroke-width="4"/>
+          <text x="670" y="112" text-anchor="middle" class="k lbl">“WRITE ME</text>
+          <text x="670" y="140" text-anchor="middle" class="k lbl">A LOVELY POEM”</text>
+          <path d="M604 210 L740 282 M740 210 L604 282" class="sp" stroke-width="13"/>
+        </g>
+      </svg>
+    </figure>
+  </section>
+
+  <!-- 4 -->
+  <section class="panel rise">
+    <h2>Then it's just a loop.</h2>
+    <p class="sub">Try, check, score, nudge. Repeat a few million times.</p>
+    <figure>
+      <svg viewBox="0 0 800 420" role="img" aria-label="A four step loop: try, check, score, nudge">
+        <circle cx="400" cy="210" r="150" class="sk" stroke-width="3" stroke-dasharray="8 14" opacity=".5"/>
+        <g class="sb" stroke-width="5">
+          <path d="M470 90 a150 150 0 0 1 60 100" marker-end="url(#ab)"/>
+          <path d="M520 290 a150 150 0 0 1 -60 60" marker-end="url(#ab)"/>
+          <path d="M330 350 a150 150 0 0 1 -60 -60" marker-end="url(#ab)"/>
+          <path d="M270 190 a150 150 0 0 1 60 -100" marker-end="url(#ab)"/>
+        </g>
+        <g>
+          <circle cx="400" cy="60" r="56" class="b"/>
+          <text x="400" y="52" text-anchor="middle" class="w lbl" style="font-size:13px">1</text>
+          <text x="400" y="74" text-anchor="middle" class="w lbl" style="font-size:14px">TRY</text>
+
+          <circle cx="600" cy="210" r="56" class="b"/>
+          <text x="600" y="202" text-anchor="middle" class="w lbl" style="font-size:13px">2</text>
+          <text x="600" y="224" text-anchor="middle" class="w lbl" style="font-size:14px">CHECK</text>
+
+          <circle cx="400" cy="360" r="56" class="b"/>
+          <text x="400" y="352" text-anchor="middle" class="w lbl" style="font-size:13px">3</text>
+          <text x="400" y="374" text-anchor="middle" class="w lbl" style="font-size:14px">SCORE</text>
+
+          <circle cx="200" cy="210" r="56" class="b"/>
+          <text x="200" y="202" text-anchor="middle" class="w lbl" style="font-size:13px">4</text>
+          <text x="200" y="224" text-anchor="middle" class="w lbl" style="font-size:14px">NUDGE</text>
+        </g>
+        <text x="400" y="196" text-anchor="middle" class="k lbl" style="font-size:13px">NO HUMAN</text>
+        <text x="400" y="222" text-anchor="middle" class="k lbl" style="font-size:13px">IN HERE</text>
+      </svg>
+    </figure>
+  </section>
+
+  <!-- 5 -->
+  <section class="panel rise">
+    <h2>Right answers become more likely.</h2>
+    <p class="sub">The score is 1 or 0. Paths that scored 1 get more weight.</p>
+    <figure>
+      <svg viewBox="0 0 800 300" role="img" aria-label="Before training two of six attempts are correct, after training five of six are correct">
+        <text x="20" y="40" class="k lbl">BEFORE</text>
+        <g>
+          <circle cx="46" cy="120" r="30" class="b"/><circle cx="118" cy="120" r="30" fill="url(#dotfill)"/>
+          <circle cx="190" cy="120" r="30" fill="url(#dotfill)"/><circle cx="46" cy="196" r="30" fill="url(#dotfill)"/>
+          <circle cx="118" cy="196" r="30" class="b"/><circle cx="190" cy="196" r="30" fill="url(#dotfill)"/>
+        </g>
+        <text x="20" y="264" class="k lbl" style="opacity:.6">2 OF 6 RIGHT</text>
+
+        <path d="M280 158 h180" class="sb" stroke-width="6" marker-end="url(#ab)"/>
+        <text x="370" y="128" text-anchor="middle" class="k lbl" style="font-size:13px">PRACTICE</text>
+
+        <text x="530" y="40" class="k lbl">AFTER</text>
+        <g>
+          <circle cx="556" cy="120" r="30" class="b"/><circle cx="628" cy="120" r="30" class="b"/>
+          <circle cx="700" cy="120" r="30" class="b"/><circle cx="556" cy="196" r="30" class="b"/>
+          <circle cx="628" cy="196" r="30" class="b"/><circle cx="700" cy="196" r="30" fill="url(#dotfill)"/>
+        </g>
+        <text x="530" y="264" class="k lbl" style="opacity:.6">5 OF 6 RIGHT</text>
+      </svg>
+    </figure>
+  </section>
+
+  <!-- 6 -->
+  <section class="panel rise">
+    <h2>So it learns to show its work.</h2>
+    <p class="sub">Snap guesses fail the key. Slow, step-by-step working survives it.</p>
+    <figure>
+      <svg viewBox="0 0 800 300" role="img" aria-label="A short guess is marked wrong, a long worked solution is marked right">
+        <rect x="30" y="30" width="300" height="240" rx="10" class="w" stroke="#FF4B9E" stroke-width="4"/>
+        <rect x="66" y="76" width="150" height="16" rx="8" class="p"/>
+        <path d="M84 176 L200 250 M200 176 L84 250" class="sp" stroke-width="13"/>
+        <text x="180" y="300" text-anchor="middle" class="k lbl" style="font-size:13px">GUESSED</text>
+
+        <rect x="470" y="30" width="300" height="240" rx="10" class="w" stroke="#1A4FC4" stroke-width="4"/>
+        <g class="b">
+          <rect x="506" y="62" width="200" height="14" rx="7"/>
+          <rect x="506" y="90" width="160" height="14" rx="7"/>
+          <rect x="506" y="118" width="228" height="14" rx="7"/>
+          <rect x="506" y="146" width="140" height="14" rx="7"/>
+          <rect x="506" y="174" width="190" height="14" rx="7"/>
+        </g>
+        <path d="M520 226 L552 258 L622 182" class="sb" stroke-width="13" stroke-linejoin="round"/>
+        <text x="620" y="300" text-anchor="middle" class="k lbl" style="font-size:13px">WORKED IT OUT</text>
+      </svg>
+    </figure>
+  </section>
+
+  <!-- 7 -->
+  <section class="panel rise">
+    <h2>And it will cheat if it can.</h2>
+    <p class="sub">Anything that scores a 1 gets rewarded — even a shortcut you didn't mean.</p>
+    <figure>
+      <svg viewBox="0 0 800 320" role="img" aria-label="A dart misses the target but the scoreboard still shows a perfect score">
+        <circle cx="240" cy="160" r="130" class="sb" stroke-width="5"/>
+        <circle cx="240" cy="160" r="86" class="sb" stroke-width="5"/>
+        <circle cx="240" cy="160" r="40" class="b"/>
+        <g class="sp" stroke-width="10">
+          <path d="M560 40 L446 132"/>
+        </g>
+        <circle cx="442" cy="136" r="16" class="p"/>
+        <text x="470" y="196" class="k lbl" style="font-size:13px">MISSED</text>
+        <rect x="540" y="200" width="240" height="94" rx="10" class="b"/>
+        <text x="660" y="240" text-anchor="middle" class="w lbl" style="font-size:13px">SCOREBOARD</text>
+        <text x="660" y="278" text-anchor="middle" class="w big" style="font-size:32px">10 / 10</text>
+      </svg>
+    </figure>
+  </section>
+
+  <section class="card rise">
+    <h2>RLVR is practice with an answer key.</h2>
+    <div class="cols">
+      <div class="col yes">
+        <h3>Works for</h3>
+        <p>Maths, code, puzzles — anything with a right answer.</p>
+      </div>
+      <div class="col no">
+        <h3>Doesn't work for</h3>
+        <p>Taste, tone, kindness — anything you'd argue about.</p>
+      </div>
+    </div>
+  </section>
+
+  <footer>Reinforcement Learning with Verifiable Rewards</footer>
+</main>
+
+<script>
+  const io = new IntersectionObserver((es) => {
+    es.forEach(e => { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } });
+  }, { threshold: 0.12 });
+  document.querySelectorAll('.rise').forEach(el => io.observe(el));
+</script>
+</body>
+</html>

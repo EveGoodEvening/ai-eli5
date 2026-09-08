@@ -1,0 +1,9 @@
+/* Namespaced so each independent explainer can keep its own visual style. */
+.eli5-site-nav{position:relative;z-index:20;display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;box-sizing:border-box;margin:0;padding:14px max(20px,calc((100% - 1120px)/2));background:#fafbfc;color:#16233a;border-bottom:1px solid #c4ccda;font:500 14px/1.4 system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;letter-spacing:0;text-transform:none}
+.eli5-site-nav a{display:inline-flex;align-items:center;justify-content:center;position:static;box-sizing:border-box;width:auto;height:auto;margin:0;padding:8px 10px;color:inherit;background:transparent;border:0;border-radius:6px;box-shadow:none;text-decoration:none;font:inherit;letter-spacing:0;white-space:nowrap;transform:none}
+.eli5-site-nav a::after,.eli5-site-nav a::before{content:none}
+.eli5-site-nav a:hover{background:#e8ecf7}
+.eli5-site-nav a:focus-visible{outline:3px solid #2747d8;outline-offset:3px}
+.eli5-site-nav a[aria-current]{background:#2747d8;color:#fff}
+.eli5-site-nav .eli5-languages{display:flex;flex-wrap:wrap;gap:4px;align-items:center}
+@media(max-width:560px){.eli5-site-nav{padding:10px 14px;font-size:13px}.eli5-site-nav a{padding:8px}.eli5-site-nav{gap:6px}}

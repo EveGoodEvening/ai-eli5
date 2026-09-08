@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PPO — a picture book</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,700;12..96,800&family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#E9E7DC;
+    --ink:#181828;
+    --blue:#2348D8;
+    --pink:#FF3E7F;
+    --hair:rgba(24,24,40,.18);
+    --display:"Bricolage Grotesque","Arial Black",system-ui,sans-serif;
+    --body:"IBM Plex Sans",system-ui,sans-serif;
+    --mono:"IBM Plex Mono",ui-monospace,monospace;
+  }
+
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0;
+    background:var(--paper);
+    color:var(--ink);
+    font-family:var(--body);
+    -webkit-font-smoothing:antialiased;
+    overflow-x:hidden;
+  }
+
+  /* newsprint grain — the riso tell */
+  .grain{
+    position:fixed; inset:0; z-index:99; pointer-events:none;
+    mix-blend-mode:multiply; opacity:.32;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)' opacity='.55'/%3E%3C/svg%3E");
+  }
+
+  .panel{
+    min-height:100svh;
+    display:flex; align-items:center; justify-content:center;
+    padding:14vh 24px;
+    position:relative;
+  }
+  .inner{width:100%; max-width:780px; text-align:center}
+
+  .eyebrow{
+    font-family:var(--mono); font-size:.75rem; font-weight:600;
+    letter-spacing:.22em; text-transform:uppercase;
+    color:var(--pink); margin:0 0 26px;
+  }
+  .eyebrow span{color:var(--ink); opacity:.4}
+
+  h1{
+    font-family:var(--display); font-weight:800;
+    font-size:clamp(5rem,26vw,15rem); line-height:.82;
+    letter-spacing:-.05em; margin:0;
+  }
+  h2{
+    font-family:var(--display); font-weight:800;
+    font-size:clamp(2.1rem,7.2vw,4.1rem); line-height:1.0;
+    letter-spacing:-.035em; margin:34px 0 0; text-wrap:balance;
+  }
+  .sub{
+    font-size:clamp(1.05rem,2.6vw,1.5rem); line-height:1.35;
+    max-width:22ch; margin:26px auto 0; opacity:.75; text-wrap:balance;
+  }
+  .note{
+    font-family:var(--mono); font-size:.78rem; letter-spacing:.06em;
+    margin:22px auto 0; max-width:34ch; opacity:.55; line-height:1.6;
+  }
+  .ink-pink{color:var(--pink)}
+  .ink-blue{color:var(--blue)}
+
+  .art{margin:0 auto; display:block; width:100%; height:auto}
+  .art--sm{max-width:340px}
+  .art--md{max-width:520px}
+  .art--lg{max-width:640px}
+  .over{mix-blend-mode:multiply}
+
+  /* ---------- hero ---------- */
+  .hero .inner{max-width:900px}
+  .hero-mark{position:relative; display:inline-block}
+  .hero-mark h1{position:relative; z-index:2}
+  .hero-blot{
+    position:absolute; z-index:1; border-radius:50%;
+    mix-blend-mode:multiply; filter:blur(2px);
+  }
+  .b1{width:46%; padding-bottom:46%; background:var(--pink); left:-6%; top:-16%}
+  .b2{width:38%; padding-bottom:38%; background:var(--blue); right:-4%; bottom:-20%}
+  .scrollcue{
+    font-family:var(--mono); font-size:.72rem; letter-spacing:.24em;
+    text-transform:uppercase; margin-top:64px; opacity:.5;
+  }
+  .scrollcue i{display:block; width:1px; height:46px; background:var(--ink); margin:14px auto 0; opacity:.4}
+
+  /* ---------- score cards ---------- */
+  .pair{display:flex; gap:clamp(16px,5vw,52px); justify-content:center; align-items:stretch; flex-wrap:wrap}
+  .card{
+    flex:1 1 200px; max-width:270px; padding:26px 18px 22px;
+    border:3px solid var(--ink); border-radius:22px; background:transparent;
+  }
+  .card .num{font-family:var(--display); font-weight:800; font-size:clamp(3rem,10vw,4.6rem); line-height:1; letter-spacing:-.04em}
+  .card .lab{font-family:var(--mono); font-size:.74rem; letter-spacing:.14em; text-transform:uppercase; margin-top:14px; opacity:.6}
+  .card svg{width:56px; height:56px; margin-top:12px}
+
+  /* ---------- the signature: the leash ---------- */
+  .demo{
+    margin-top:34px; padding:30px 22px 26px;
+    border:3px solid var(--ink); border-radius:28px;
+  }
+  .readout{
+    font-family:var(--display); font-weight:800; letter-spacing:-.02em;
+    font-size:clamp(1.5rem,5vw,2.3rem); min-height:1.2em; transition:color .18s;
+  }
+  .readout.ok{color:var(--blue)}
+  .readout.clip{color:var(--pink)}
+  .slider-wrap{margin-top:6px}
+  .slider-wrap label{
+    display:block; font-family:var(--mono); font-size:.7rem;
+    letter-spacing:.16em; text-transform:uppercase; opacity:.55; margin-bottom:14px;
+  }
+  input[type=range]{
+    -webkit-appearance:none; appearance:none; width:100%; background:transparent; margin:0;
+  }
+  input[type=range]::-webkit-slider-runnable-track{height:8px; border-radius:99px; background:rgba(24,24,40,.16)}
+  input[type=range]::-moz-range-track{height:8px; border-radius:99px; background:rgba(24,24,40,.16)}
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none; width:34px; height:34px; border-radius:50%;
+    background:var(--ink); border:4px solid var(--paper); margin-top:-13px; cursor:grab;
+  }
+  input[type=range]::-moz-range-thumb{
+    width:34px; height:34px; border-radius:50%; background:var(--ink);
+    border:4px solid var(--paper); cursor:grab;
+  }
+  input[type=range]:focus-visible{outline:none}
+  input[type=range]:focus-visible::-webkit-slider-thumb{box-shadow:0 0 0 4px var(--pink)}
+  input[type=range]:focus-visible::-moz-range-thumb{box-shadow:0 0 0 4px var(--pink)}
+
+  .meter{margin-top:26px}
+  .meter .lab{font-family:var(--mono); font-size:.7rem; letter-spacing:.16em; text-transform:uppercase; opacity:.55; margin-bottom:10px}
+  .meter .track{height:20px; border:3px solid var(--ink); border-radius:99px; overflow:hidden}
+  .meter .fill{height:100%; width:0%; background:var(--blue); transition:width .12s linear, background .18s}
+  .meter .fill.max{background:var(--pink)}
+
+  /* ---------- recap ---------- */
+  .recap{display:grid; gap:14px; margin-top:34px; text-align:left}
+  .row{display:flex; align-items:baseline; gap:18px; padding:20px 20px; border:3px solid var(--ink); border-radius:20px}
+  .row .letter{font-family:var(--display); font-weight:800; font-size:2.6rem; line-height:1; color:var(--pink); width:1.1em; flex:none}
+  .row .word{font-family:var(--display); font-weight:800; font-size:1.35rem; letter-spacing:-.02em; display:block}
+  .row .gloss{font-size:1rem; opacity:.7; display:block; margin-top:4px}
+
+  footer{
+    padding:12vh 24px 16vh; text-align:center;
+    font-family:var(--mono); font-size:.76rem; letter-spacing:.08em;
+    opacity:.5; line-height:1.8;
+  }
+
+  /* ---------- motion ---------- */
+  .rev{opacity:0; transform:translateY(26px); transition:opacity .7s cubic-bezier(.2,.7,.3,1), transform .7s cubic-bezier(.2,.7,.3,1); transition-delay:var(--d,0s)}
+  .rev.in{opacity:1; transform:none}
+  .spin{transform-origin:300px 200px; animation:spin 9s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+
+  @media (prefers-reduced-motion:reduce){
+    html{scroll-behavior:auto}
+    .rev{opacity:1; transform:none; transition:none}
+    .spin{animation:none}
+    #loopdot{display:none}
+  }
+  @media (max-width:560px){
+    .card{padding:20px 12px 16px}
+    .row{padding:16px 14px; gap:12px}
+    .row .letter{font-size:2rem}
+  }
+</style>
+<!-- eli5:head:start -->
+<link rel="alternate" hreflang="en" href="ppo-explained.en.html">
+<link rel="alternate" hreflang="zh-CN" href="ppo-explained.zh-CN.html">
+<link rel="stylesheet" href="language.css">
+<script src="language.js" defer></script>
+<!-- eli5:head:end -->
+</head>
+<body>
+<!-- eli5:nav:start -->
+<div class="eli5-site-nav" role="navigation" aria-label="Guide navigation and language">
+  <a class="eli5-nav-home" href="index.html?lang=en">← All guides</a>
+  <div class="eli5-languages">
+    <a href="ppo-explained.zh-CN.html" data-language="zh-CN" lang="zh-CN" hreflang="zh-CN">简体中文</a>
+    <a href="ppo-explained.en.html" data-language="en" lang="en" hreflang="en" aria-current="page">English</a>
+  </div>
+</div>
+<!-- eli5:nav:end -->
+<div class="grain" aria-hidden="true"></div>
+
+<!-- shared drawings -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="bot" viewBox="0 0 200 200">
+    <line x1="100" y1="16" x2="100" y2="46" stroke="currentColor" stroke-width="8" stroke-linecap="round"/>
+    <circle cx="100" cy="14" r="12" fill="var(--pink)"/>
+    <rect x="24" y="44" width="152" height="126" rx="32" fill="var(--blue)"/>
+    <circle cx="72" cy="100" r="13" fill="var(--paper)"/>
+    <circle cx="128" cy="100" r="13" fill="var(--paper)"/>
+    <path d="M76 134 Q100 150 124 134" stroke="var(--paper)" stroke-width="8" fill="none" stroke-linecap="round"/>
+    <rect x="46" y="170" width="26" height="20" rx="7" fill="currentColor"/>
+    <rect x="128" y="170" width="26" height="20" rx="7" fill="currentColor"/>
+  </symbol>
+  <symbol id="thumbup" viewBox="0 0 48 48">
+    <path d="M14 22h6v18h-6z" fill="currentColor"/>
+    <path d="M22 22l7-14a4 4 0 016 4l-2 8h9a4 4 0 014 5l-3 12a4 4 0 01-4 3H22z" fill="currentColor"/>
+  </symbol>
+</svg>
+
+<!-- 00 HERO -->
+<section class="panel hero">
+  <div class="inner">
+    <p class="eyebrow rev">A picture book about <span>reinforcement learning</span></p>
+    <div class="hero-mark rev" style="--d:.08s">
+      <span class="hero-blot b1" aria-hidden="true"></span>
+      <span class="hero-blot b2" aria-hidden="true"></span>
+      <h1>PPO</h1>
+    </div>
+    <p class="sub rev" style="--d:.16s">How an AI is taught to give better answers.</p>
+    <p class="scrollcue rev" style="--d:.28s">Scroll<i></i></p>
+  </div>
+</section>
+
+<!-- 01 -->
+<section class="panel">
+  <div class="inner">
+    <p class="eyebrow rev">Step 01</p>
+    <svg class="art art--md rev" style="--d:.06s" viewBox="0 0 520 240" role="img" aria-label="A robot speaking, with an answer in a speech bubble.">
+      <g color="var(--ink)"><use href="#bot" x="10" y="20" width="200" height="200"/></g>
+      <g class="over">
+        <path d="M236 40h250a22 22 0 0122 22v88a22 22 0 01-22 22H286l-40 34 6-34h-16a22 22 0 01-22-22V62a22 22 0 0122-22z" fill="var(--pink)"/>
+        <rect x="264" y="76" width="196" height="14" rx="7" fill="var(--paper)"/>
+        <rect x="264" y="102" width="160" height="14" rx="7" fill="var(--paper)"/>
+        <rect x="264" y="128" width="120" height="14" rx="7" fill="var(--paper)"/>
+      </g>
+    </svg>
+    <h2 class="rev" style="--d:.12s">The AI writes an answer.</h2>
+  </div>
+</section>
+
+<!-- 02 -->
+<section class="panel">
+  <div class="inner">
+    <p class="eyebrow rev">Step 02</p>
+    <svg class="art art--md rev" style="--d:.06s" viewBox="0 0 520 250" role="img" aria-label="The answer is handed to a scorer, which gives it seven out of ten.">
+      <g class="over">
+        <path d="M14 40h200a20 20 0 0120 20v80a20 20 0 01-20 20H90l-34 28 5-28H14a20 20 0 01-20-20V60a20 20 0 0120-20z" fill="var(--pink)" transform="translate(20,0)"/>
+        <rect x="60" y="74" width="150" height="13" rx="6.5" fill="var(--paper)"/>
+        <rect x="60" y="98" width="118" height="13" rx="6.5" fill="var(--paper)"/>
+      </g>
+      <path d="M258 100h44" stroke="var(--ink)" stroke-width="9" stroke-linecap="round"/>
+      <path d="M292 86l20 14-20 14" fill="none" stroke="var(--ink)" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+      <g class="over">
+        <rect x="330" y="24" width="176" height="196" rx="24" fill="var(--blue)"/>
+        <rect x="378" y="10" width="80" height="30" rx="12" fill="var(--ink)"/>
+        <text x="418" y="130" text-anchor="middle" fill="var(--paper)" font-family="Bricolage Grotesque, Arial Black, sans-serif" font-weight="800" font-size="72">7</text>
+        <text x="418" y="176" text-anchor="middle" fill="var(--paper)" font-family="IBM Plex Mono, monospace" font-size="22" letter-spacing="2" opacity=".9">/ 10</text>
+      </g>
+    </svg>
+    <h2 class="rev" style="--d:.12s">A scorer rates it.</h2>
+    <p class="note rev" style="--d:.2s">The scorer is itself a model — trained on thousands of human judgements of what makes a good answer.</p>
+  </div>
+</section>
+
+<!-- 03 -->
+<section class="panel">
+  <div class="inner">
+    <p class="eyebrow rev">Step 03</p>
+    <div class="pair rev" style="--d:.06s">
+      <div class="card">
+        <div class="num ink-blue">9</div>
+        <svg viewBox="0 0 48 48" color="var(--blue)" aria-hidden="true"><use href="#thumbup"/></svg>
+        <div class="lab">More like this</div>
+      </div>
+      <div class="card">
+        <div class="num ink-pink">2</div>
+        <svg viewBox="0 0 48 48" color="var(--pink)" aria-hidden="true" style="transform:rotate(180deg)"><use href="#thumbup"/></svg>
+        <div class="lab">Less like this</div>
+      </div>
+    </div>
+    <h2 class="rev" style="--d:.12s">The score nudges the AI.</h2>
+  </div>
+</section>
+
+<!-- 04 -->
+<section class="panel">
+  <div class="inner">
+    <p class="eyebrow rev">The catch</p>
+    <svg class="art art--md rev" style="--d:.06s" viewBox="0 0 520 250" role="img" aria-label="A tilted robot producing nonsense.">
+      <g color="var(--ink)" transform="rotate(-14 110 130)"><use href="#bot" x="10" y="30" width="200" height="200"/></g>
+      <g class="over">
+        <path d="M250 44h250a22 22 0 0122 22v96a22 22 0 01-22 22H300l-42 36 7-36h-15a22 22 0 01-22-22V66a22 22 0 0122-22z" fill="var(--pink)"/>
+        <path d="M276 118l24-32 22 46 24-60 22 60 24-46 22 32" fill="none" stroke="var(--paper)" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>
+      </g>
+      <text x="466" y="216" text-anchor="middle" font-family="Bricolage Grotesque, Arial Black, sans-serif" font-weight="800" font-size="64" fill="var(--pink)">!</text>
+    </svg>
+    <h2 class="rev" style="--d:.12s">Big leaps break it.</h2>
+    <p class="note rev" style="--d:.2s">Chase the score too hard in one jump and the AI forgets how to write like a person.</p>
+  </div>
+</section>
+
+<!-- 05 THE SIGNATURE -->
+<section class="panel">
+  <div class="inner">
+    <p class="eyebrow rev">The fix — “proximal” means “nearby”</p>
+    <h2 class="rev" style="--d:.06s">Only small steps count.</h2>
+
+    <div class="demo rev" style="--d:.12s">
+      <svg class="art" viewBox="0 0 600 210" role="img" aria-label="A robot on a leash. Inside the marked zone the step is accepted; outside it is clipped.">
+        <!-- allowed zone -->
+        <rect x="195" y="26" width="210" height="150" rx="18" fill="var(--blue)" opacity=".13"/>
+        <rect x="195" y="26" width="210" height="150" rx="18" fill="none" stroke="var(--blue)" stroke-width="4" stroke-dasharray="12 10"/>
+        <text x="300" y="18" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="13" letter-spacing="2.5" fill="var(--blue)">SMALL-STEP ZONE</text>
+        <!-- ground -->
+        <line x1="20" y1="176" x2="580" y2="176" stroke="var(--ink)" stroke-width="4" opacity=".25"/>
+        <!-- old model, staying put -->
+        <g opacity=".34" color="var(--ink)"><use href="#bot" x="270" y="84" width="60" height="60"/></g>
+        <text x="300" y="196" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="12" letter-spacing="2" opacity=".5">YESTERDAY</text>
+        <!-- leash -->
+        <line id="leash" x1="300" y1="118" x2="300" y2="118" stroke="var(--blue)" stroke-width="9" stroke-linecap="round"/>
+        <circle cx="300" cy="118" r="8" fill="var(--ink)"/>
+        <!-- new model -->
+        <g id="puck" color="var(--ink)"><use href="#bot" x="-45" y="70" width="90" height="90"/></g>
+      </svg>
+
+      <p class="readout ok" id="readout" aria-live="polite">This step counts.</p>
+
+      <div class="slider-wrap">
+        <label for="step">Drag: how far the AI changes in one step</label>
+        <input id="step" type="range" min="-100" max="100" value="18" step="1" aria-describedby="readout">
+      </div>
+
+      <div class="meter">
+        <div class="lab">How much it actually learns</div>
+        <div class="track"><div class="fill" id="fill"></div></div>
+      </div>
+    </div>
+
+    <p class="note rev" style="--d:.2s">Past the edge, PPO flattens the reward — a bigger leap buys nothing. That flattening is the whole trick.</p>
+  </div>
+</section>
+
+<!-- 06 -->
+<section class="panel">
+  <div class="inner">
+    <p class="eyebrow rev">And again</p>
+    <svg class="art art--md rev" style="--d:.06s" viewBox="0 0 600 400" role="img" aria-label="A loop: write, score, nudge, repeat.">
+      <path id="loop" d="M300 60a140 140 0 110 280 140 140 0 010-280" fill="none" stroke="var(--ink)" stroke-width="5" opacity=".3" stroke-dasharray="14 12"/>
+      <g class="spin"><path d="M300 46l22 14-22 14z" fill="var(--pink)"/></g>
+      <circle id="loopdot" r="11" fill="var(--pink)">
+        <animateMotion dur="5s" repeatCount="indefinite"><mpath href="#loop"/></animateMotion>
+      </circle>
+      <g class="over">
+        <circle cx="300" cy="60" r="46" fill="var(--blue)"/>
+        <circle cx="421" cy="270" r="46" fill="var(--blue)"/>
+        <circle cx="179" cy="270" r="46" fill="var(--blue)"/>
+      </g>
+      <g font-family="IBM Plex Mono, monospace" font-size="15" fill="var(--paper)" text-anchor="middle" letter-spacing="1">
+        <text x="300" y="66">WRITE</text>
+        <text x="421" y="276">SCORE</text>
+        <text x="179" y="276">NUDGE</text>
+      </g>
+    </svg>
+    <h2 class="rev" style="--d:.12s">Repeat a few million times.</h2>
+    <p class="note rev" style="--d:.2s">Each pass moves the AI a little. Slowly, the answers people liked become the answers it gives.</p>
+  </div>
+</section>
+
+<!-- 07 -->
+<section class="panel">
+  <div class="inner">
+    <p class="eyebrow rev">Three words, plainly</p>
+    <div class="recap">
+      <div class="row rev" style="--d:.04s"><span class="letter">P</span><span><span class="word">Proximal</span><span class="gloss">Stay close to what you were yesterday.</span></span></div>
+      <div class="row rev" style="--d:.12s"><span class="letter">P</span><span><span class="word">Policy</span><span class="gloss">The AI's habit of choosing what to say.</span></span></div>
+      <div class="row rev" style="--d:.2s"><span class="letter">O</span><span><span class="word">Optimization</span><span class="gloss">Keep pushing the score up.</span></span></div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  Real PPO has more moving parts than this.<br>But this is the shape of it.
+</footer>
+
+<script>
+(function(){
+  /* reveal on scroll */
+  var io = new IntersectionObserver(function(es){
+    es.forEach(function(e){ if(e.isIntersecting){ e.target.classList.add('in'); io.unobserve(e.target); } });
+  }, {threshold:.2, rootMargin:'0px 0px -8% 0px'});
+  document.querySelectorAll('.rev').forEach(function(el){ io.observe(el); });
+
+  /* the leash */
+  var CLIP = 35, SPAN = 250, CX = 300;
+  var step = document.getElementById('step'),
+      puck = document.getElementById('puck'),
+      leash = document.getElementById('leash'),
+      readout = document.getElementById('readout'),
+      fill = document.getElementById('fill');
+
+  function draw(){
+    var v = +step.value;
+    var x = CX + (v/100)*SPAN;
+    var far = Math.abs(v) > CLIP;
+
+    puck.setAttribute('transform','translate('+x+',0)');
+    leash.setAttribute('x2', x);
+    leash.setAttribute('stroke', far ? 'var(--pink)' : 'var(--blue)');
+    leash.setAttribute('stroke-width', Math.max(3, 9 - Math.abs(v)/18));
+    leash.setAttribute('stroke-dasharray', far ? '7 9' : 'none');
+
+    readout.textContent = far ? 'Clipped — too far.' : 'This step counts.';
+    readout.className = 'readout ' + (far ? 'clip' : 'ok');
+
+    var learned = Math.min(Math.abs(v), CLIP) / CLIP;
+    fill.style.width = (learned*100) + '%';
+    fill.classList.toggle('max', far);
+  }
+  step.addEventListener('input', draw);
+  draw();
+})();
+</script>
+</body>
+</html>

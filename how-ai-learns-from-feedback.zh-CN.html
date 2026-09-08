@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>练习、反馈、重复：聊天机器人如何学会好好回答</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=DM+Mono:wght@400;500&family=Work+Sans:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#D9E0DC;
+    --pink:#FF3D8B;
+    --blue:#1B4CE0;
+    --yellow:#FFC61E;
+    --ink:#16181C;
+    --display:"Bricolage Grotesque","Arial Black",system-ui,sans-serif;
+    --body:"Work Sans",system-ui,sans-serif;
+    --mono:"DM Mono",ui-monospace,"Courier New",monospace;
+    --gut:clamp(20px,5vw,64px);
+  }
+
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0;
+    background:var(--paper);
+    color:var(--ink);
+    font-family:var(--body);
+    -webkit-font-smoothing:antialiased;
+    overflow-x:hidden;
+  }
+
+  /* paper grain — the riso tell */
+  .grain{
+    position:fixed;inset:0;z-index:100;pointer-events:none;
+    opacity:.4;mix-blend-mode:multiply;
+  }
+
+  .wrap{max-width:1080px;margin:0 auto;padding:0 var(--gut)}
+
+  /* ---------- type ---------- */
+  .eyebrow{
+    font-family:var(--mono);font-size:12px;letter-spacing:.22em;
+    text-transform:uppercase;color:var(--blue);margin:0 0 18px;
+  }
+  h1{
+    font-family:var(--display);font-weight:800;
+    font-size:clamp(3.1rem,13vw,8.5rem);
+    line-height:.86;letter-spacing:-.035em;margin:0;
+    position:relative;
+  }
+  /* misregistration: the pink plate printed a hair off the black plate */
+  h1 .plate{position:relative;display:block}
+  h1 .plate::before{
+    content:attr(data-t);position:absolute;left:-.055em;top:.045em;
+    color:var(--pink);mix-blend-mode:multiply;z-index:-1;
+  }
+  h2{
+    font-family:var(--display);font-weight:800;
+    font-size:clamp(2rem,6.4vw,3.9rem);
+    line-height:.94;letter-spacing:-.03em;margin:0 0 20px;max-width:16ch;
+  }
+  p{font-size:clamp(1.05rem,2.4vw,1.35rem);line-height:1.45;margin:0;max-width:34ch}
+  .lede{font-family:var(--mono);font-size:clamp(.95rem,2.2vw,1.1rem);line-height:1.6;max-width:30ch}
+  .tag{
+    font-family:var(--mono);font-size:11px;letter-spacing:.18em;text-transform:uppercase;
+    display:inline-block;padding:6px 12px;border:1.5px solid var(--ink);border-radius:99px;
+  }
+
+  /* ---------- layout ---------- */
+  section{padding:clamp(70px,12vh,130px) 0;position:relative}
+  .rule{height:2px;background:var(--ink);opacity:.85}
+  .art{width:100%;height:auto;display:block}
+  .art-wide{max-width:820px;margin:0 auto}
+  .split{display:grid;grid-template-columns:1fr;gap:clamp(24px,4vw,56px);align-items:center}
+  @media(min-width:820px){
+    .split{grid-template-columns:1fr 1fr}
+    .split.flip .col-art{order:-1}
+  }
+  .duo{display:grid;grid-template-columns:1fr;gap:22px;margin-top:38px}
+  @media(min-width:700px){.duo{grid-template-columns:1fr 1fr;gap:32px}}
+  .card{border:2px solid var(--ink);border-radius:22px;padding:26px 24px 30px;background:transparent}
+  .card h3{font-family:var(--display);font-weight:800;font-size:1.7rem;margin:16px 0 8px;letter-spacing:-.02em}
+  .card p{font-size:1rem;max-width:30ch}
+
+  /* ink overprint */
+  .ink-pink{fill:var(--pink)}
+  .ink-blue{fill:var(--blue)}
+  .ink-yellow{fill:var(--yellow)}
+  .ink-dark{fill:var(--ink)}
+  svg .op{mix-blend-mode:multiply}
+  svg text{font-family:var(--display);font-weight:800;fill:var(--ink)}
+  svg .mono{font-family:var(--mono);font-weight:400}
+  .stroke{fill:none;stroke:var(--ink);stroke-width:5;stroke-linecap:round;stroke-linejoin:round}
+  .stroke-thin{fill:none;stroke:var(--ink);stroke-width:3.5;stroke-linecap:round}
+
+  /* hero */
+  .hero{padding-top:clamp(46px,9vh,90px);padding-bottom:clamp(40px,7vh,80px)}
+  .hero-art{max-width:520px;width:100%;margin-top:34px}
+
+  /* closer */
+  .closer{text-align:center;padding-bottom:clamp(90px,16vh,180px)}
+  .closer h2{max-width:none;margin-inline:auto;font-size:clamp(2.4rem,9vw,5.5rem)}
+  .closer p{margin-inline:auto;text-align:center}
+
+  /* reveal */
+  .rise{opacity:0;transform:translateY(26px);transition:opacity .7s ease,transform .7s cubic-bezier(.2,.7,.3,1)}
+  .rise.in{opacity:1;transform:none}
+  @media(prefers-reduced-motion:reduce){
+    .rise{opacity:1;transform:none;transition:none}
+    html{scroll-behavior:auto}
+    .spin{animation:none !important}
+  }
+  .spin{transform-origin:300px 300px;animation:turn 26s linear infinite}
+  @keyframes turn{to{transform:rotate(360deg)}}
+  :focus-visible{outline:3px solid var(--blue);outline-offset:3px}
+
+/* Simplified Chinese typography; diagrams retain their original geometry. */
+:root{--display:"PingFang SC","Microsoft YaHei","Noto Sans CJK SC",system-ui,sans-serif;--body:"PingFang SC","Microsoft YaHei","Noto Sans CJK SC",system-ui,sans-serif;--mono:"Space Mono","PingFang SC","Microsoft YaHei",monospace}
+html[lang="zh-CN"] body{font-family:var(--body);line-height:1.65}
+html[lang="zh-CN"] h1,html[lang="zh-CN"] h2,html[lang="zh-CN"] h3,html[lang="zh-CN"] .head,html[lang="zh-CN"] .recap{font-family:var(--display);line-height:1.2;letter-spacing:0}
+html[lang="zh-CN"] .say,html[lang="zh-CN"] .sub,html[lang="zh-CN"] .cap,html[lang="zh-CN"] .lede,html[lang="zh-CN"] .note p,html[lang="zh-CN"] .gloss dd,html[lang="zh-CN"] .gl dd,html[lang="zh-CN"] p{line-height:1.65}
+html[lang="zh-CN"] svg text{font-family:var(--display);letter-spacing:0}
+html[lang="zh-CN"] .eyebrow,html[lang="zh-CN"] .label,html[lang="zh-CN"] .tiny{letter-spacing:.08em}
+</style>
+<!-- eli5:head:start -->
+<link rel="alternate" hreflang="en" href="how-ai-learns-from-feedback.en.html">
+<link rel="alternate" hreflang="zh-CN" href="how-ai-learns-from-feedback.zh-CN.html">
+<link rel="stylesheet" href="language.css">
+<script src="language.js" defer></script>
+<!-- eli5:head:end -->
+</head>
+<body>
+<!-- eli5:nav:start -->
+<div class="eli5-site-nav" role="navigation" aria-label="图解导航与语言选择">
+  <a class="eli5-nav-home" href="index.html?lang=zh-CN">← 图解目录</a>
+  <div class="eli5-languages">
+    <a href="how-ai-learns-from-feedback.zh-CN.html" data-language="zh-CN" lang="zh-CN" hreflang="zh-CN" aria-current="page">简体中文</a>
+    <a href="how-ai-learns-from-feedback.en.html" data-language="en" lang="en" hreflang="en">English</a>
+  </div>
+</div>
+<!-- eli5:nav:end -->
+
+<svg class="grain" xmlns="http://www.w3.org/2000/svg"><filter id="n"><feTurbulence type="fractalNoise" baseFrequency=".8" numOctaves="3"/><feColorMatrix type="saturate" values="0"/></filter><rect width="100%" height="100%" filter="url(#n)" opacity=".55"/></svg>
+
+<!-- ================= HERO ================= -->
+<header class="hero wrap">
+  <p class="eyebrow">一份图解</p>
+  <h1><span class="plate" data-t="练习。">练习。</span><span class="plate" data-t="反馈。">反馈。</span><span class="plate" data-t="重复。">重复。</span></h1>
+
+  <svg class="art hero-art" viewBox="0 0 520 300" role="img" aria-label="一个内部带星星的对话气泡，与蓝色圆形叠在一起。">
+    <circle class="ink-blue op" cx="390" cy="150" r="112"/>
+    <path class="ink-pink op" d="M40 40h330a26 26 0 0 1 26 26v130a26 26 0 0 1-26 26H150l-72 62 12-62H40a26 26 0 0 1-26-26V66a26 26 0 0 1 26-26z"/>
+    <path class="ink-yellow op" d="M205 68l27 55 61 9-44 43 10 61-54-29-55 29 11-61-44-43 61-9z"/>
+    <path class="stroke" d="M40 40h330a26 26 0 0 1 26 26v130a26 26 0 0 1-26 26H150l-72 62 12-62H40a26 26 0 0 1-26-26V66a26 26 0 0 1 26-26z"/>
+  </svg>
+
+  <p class="lede" style="margin-top:34px">一台猜文本的机器，怎样变成值得对话的助手。</p>
+</header>
+
+<div class="wrap"><div class="rule"></div></div>
+
+<!-- ================= 1. PRETRAINING ================= -->
+<section class="wrap rise">
+  <div class="split">
+    <div>
+      <span class="tag">从哪里开始</span>
+      <h2 style="margin-top:20px">先读遍海量文本。</h2>
+      <p>它从中学会一项本领： <em>猜下一个词</em>。</p>
+    </div>
+    <div class="col-art">
+      <svg class="art" viewBox="0 0 480 320" role="img" aria-label="一叠纸上的内容流入机器，机器开始猜测下一个词。">
+        <g class="op ink-yellow">
+          <rect x="20" y="196" width="150" height="26" rx="6"/>
+          <rect x="34" y="160" width="150" height="26" rx="6"/>
+          <rect x="12" y="124" width="150" height="26" rx="6"/>
+          <rect x="30" y="88" width="150" height="26" rx="6"/>
+          <rect x="20" y="52" width="150" height="26" rx="6"/>
+        </g>
+        <g class="stroke-thin">
+          <rect x="20" y="196" width="150" height="26" rx="6"/>
+          <rect x="34" y="160" width="150" height="26" rx="6"/>
+          <rect x="12" y="124" width="150" height="26" rx="6"/>
+          <rect x="30" y="88" width="150" height="26" rx="6"/>
+          <rect x="20" y="52" width="150" height="26" rx="6"/>
+        </g>
+        <path class="ink-pink op" d="M300 70h150a20 20 0 0 1 20 20v140a20 20 0 0 1-20 20H300a20 20 0 0 1-20-20V90a20 20 0 0 1 20-20z"/>
+        <path class="stroke" d="M300 70h150a20 20 0 0 1 20 20v140a20 20 0 0 1-20 20H300a20 20 0 0 1-20-20V90a20 20 0 0 1 20-20z"/>
+        <path class="stroke" d="M198 160h58"/>
+        <path class="ink-dark" d="M252 146l30 14-30 14z"/>
+        <text x="375" y="150" text-anchor="middle" font-size="30">下一个</text>
+        <text x="375" y="186" text-anchor="middle" font-size="30">词是……</text>
+        <circle class="ink-blue op" cx="452" cy="72" r="18"/>
+      </svg>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 2. THE PROBLEM ================= -->
+<section class="wrap rise">
+  <div class="split flip">
+    <div>
+      <span class="tag">问题在哪</span>
+      <h2 style="margin-top:20px">看起来像话，不等于有帮助。</h2>
+      <p>这两种文字都有人写，但只有其中一种能帮到你。</p>
+    </div>
+    <div class="col-art">
+      <svg class="art" viewBox="0 0 480 340" role="img" aria-label="两个答案气泡：啰嗦的回答打了叉，清楚的回答打了勾。">
+        <path class="ink-pink op" d="M24 20h300a22 22 0 0 1 22 22v78a22 22 0 0 1-22 22H120l-52 44 9-44H24A22 22 0 0 1 2 120V42a22 22 0 0 1 22-22z"/>
+        <path class="stroke-thin" d="M24 20h300a22 22 0 0 1 22 22v78a22 22 0 0 1-22 22H120l-52 44 9-44H24A22 22 0 0 1 2 120V42a22 22 0 0 1 22-22z"/>
+        <path class="stroke-thin" d="M34 56c14-12 28 12 42 0s28 12 42 0 28 12 42 0 28 12 42 0M34 96c14-12 28 12 42 0s28 12 42 0 28 12 42 0"/>
+        <g class="op ink-blue"><circle cx="404" cy="78" r="52"/></g>
+        <path class="stroke" d="M382 56l44 44M426 56l-44 44"/>
+
+        <path class="ink-yellow op" d="M24 196h300a22 22 0 0 1 22 22v78a22 22 0 0 1-22 22H120l-52 44 9-44H24a22 22 0 0 1-22-22v-78a22 22 0 0 1 22-22z"/>
+        <path class="stroke-thin" d="M24 196h300a22 22 0 0 1 22 22v78a22 22 0 0 1-22 22H120l-52 44 9-44H24a22 22 0 0 1-22-22v-78a22 22 0 0 1 22-22z"/>
+        <path class="stroke-thin" d="M34 232h250M34 262h210M34 292h150"/>
+        <g class="op ink-blue"><circle cx="404" cy="254" r="52"/></g>
+        <path class="stroke" d="M380 254l18 20 32-42"/>
+      </svg>
+    </div>
+  </div>
+</section>
+
+<div class="wrap"><div class="rule"></div></div>
+
+<!-- ================= 3. THE LOOP ================= -->
+<section class="wrap rise" style="text-align:center">
+  <span class="tag">解决办法</span>
+  <h2 style="margin:20px auto 14px;max-width:14ch">于是，我们让它练习。</h2>
+  <p style="margin:0 auto 10px">四个步骤，反复循环。这就是强化学习。</p>
+
+  <svg class="art art-wide" style="margin-top:24px" viewBox="0 0 600 600" role="img" aria-label="由尝试、评分、微调、再来组成的四步循环，重复数百万次。">
+    <g class="spin">
+      <g>
+        <path class="stroke" d="M389.2 132.2A190 190 0 0 1 467.8 210.8"/>
+        <polygon class="ink-dark" points="0,-11 22,0 0,11" transform="translate(467.8,210.8) rotate(62)"/>
+      </g>
+      <g transform="rotate(90 300 300)">
+        <path class="stroke" d="M389.2 132.2A190 190 0 0 1 467.8 210.8"/>
+        <polygon class="ink-dark" points="0,-11 22,0 0,11" transform="translate(467.8,210.8) rotate(62)"/>
+      </g>
+      <g transform="rotate(180 300 300)">
+        <path class="stroke" d="M389.2 132.2A190 190 0 0 1 467.8 210.8"/>
+        <polygon class="ink-dark" points="0,-11 22,0 0,11" transform="translate(467.8,210.8) rotate(62)"/>
+      </g>
+      <g transform="rotate(270 300 300)">
+        <path class="stroke" d="M389.2 132.2A190 190 0 0 1 467.8 210.8"/>
+        <polygon class="ink-dark" points="0,-11 22,0 0,11" transform="translate(467.8,210.8) rotate(62)"/>
+      </g>
+    </g>
+
+    <circle class="ink-yellow op" cx="300" cy="110" r="66"/>
+    <circle class="ink-pink op" cx="490" cy="300" r="66"/>
+    <circle class="ink-blue op" cx="300" cy="490" r="66"/>
+    <circle class="ink-yellow op" cx="110" cy="300" r="66"/>
+    <g class="stroke">
+      <circle cx="300" cy="110" r="66"/><circle cx="490" cy="300" r="66"/>
+      <circle cx="300" cy="490" r="66"/><circle cx="110" cy="300" r="66"/>
+    </g>
+
+    <text x="300" y="102" text-anchor="middle" font-size="34">尝试</text>
+    <text class="mono" x="300" y="132" text-anchor="middle" font-size="15">给出 3 个答案</text>
+    <text x="490" y="292" text-anchor="middle" font-size="34">评分</text>
+    <text class="mono" x="490" y="322" text-anchor="middle" font-size="15">逐个评价</text>
+    <text x="300" y="482" text-anchor="middle" font-size="34">微调</text>
+    <text class="mono" x="300" y="512" text-anchor="middle" font-size="15">靠近好答案</text>
+    <text x="110" y="292" text-anchor="middle" font-size="34">再来</text>
+    <text class="mono" x="110" y="322" text-anchor="middle" font-size="15">再来一遍</text>
+
+    <circle class="ink-pink op" cx="300" cy="300" r="72"/>
+    <circle class="stroke" cx="300" cy="300" r="72"/>
+    <text class="mono" x="300" y="294" text-anchor="middle" font-size="17">重复</text>
+    <text class="mono" x="300" y="318" text-anchor="middle" font-size="17">数百万次</text>
+  </svg>
+</section>
+
+<div class="wrap"><div class="rule"></div></div>
+
+<!-- ================= 4. WHO SCORES ================= -->
+<section class="wrap rise">
+  <span class="tag">谁当裁判</span>
+  <h2 style="margin-top:20px">谁来打分？</h2>
+  <p>根据问题的类型，可以有两种裁判。</p>
+
+  <div class="duo">
+    <div class="card">
+      <svg class="art" viewBox="0 0 320 190" role="img" aria-label="一个点赞手势和一个点踩手势。">
+        <g class="op ink-blue"><circle cx="88" cy="95" r="70"/></g>
+        <path class="stroke" d="M62 108V80h18l16-30a14 14 0 0 1 20 14l-6 16h20a10 10 0 0 1 10 12l-8 30a12 12 0 0 1-12 9H80a18 18 0 0 1-18-18z"/>
+        <g class="op ink-pink"><circle cx="232" cy="95" r="70"/></g>
+        <path class="stroke" d="M206 82v28h18l16 30a14 14 0 0 0 20-14l-6-16h20a10 10 0 0 0 10-12l-8-30a12 12 0 0 0-12-9h-40a18 18 0 0 0-18 18z"/>
+      </svg>
+      <h3>人类</h3>
+      <p>人们选出更喜欢的回答。另一个模型学习这些偏好，再大规模地代替人类评分。</p>
+    </div>
+
+    <div class="card">
+      <svg class="art" viewBox="0 0 320 190" role="img" aria-label="一道算式和一项代码测试，分别被标记为正确或错误。">
+        <g class="op ink-yellow"><rect x="20" y="30" width="130" height="130" rx="18"/></g>
+        <rect class="stroke" x="20" y="30" width="130" height="130" rx="18"/>
+        <text x="85" y="112" text-anchor="middle" font-size="46">2+2</text>
+        <g class="op ink-blue"><rect x="176" y="30" width="130" height="130" rx="18"/></g>
+        <rect class="stroke" x="176" y="30" width="130" height="130" rx="18"/>
+        <path class="stroke" d="M214 78l-16 17 16 17M268 78l16 17-16 17M248 70l-14 50"/>
+      </svg>
+      <h3>自动检查器</h3>
+      <p>对于数学题和代码，不必依赖主观喜好。运行检查，对或错就是评分依据。</p>
+    </div>
+  </div>
+</section>
+
+<div class="wrap"><div class="rule"></div></div>
+
+<!-- ================= 5. REWARD HACKING ================= -->
+<section class="wrap rise">
+  <div class="split flip">
+    <div>
+      <span class="tag">隐藏的问题</span>
+      <h2 style="margin-top:20px">它追逐分数，却未必理解你的本意。</h2>
+      <p>如果讨好能拿高分，它就学会讨好。如果又长又自信的回答分数高，它就学会写得又长又自信，哪怕内容是错的。</p>
+    </div>
+    <div class="col-art">
+      <svg class="art" viewBox="0 0 480 300" role="img" aria-label="空洞的回答气泡上方，评分表的指针却指向满分。">
+        <g class="op ink-pink"><path d="M60 210a180 180 0 0 1 360 0z"/></g>
+        <path class="stroke" d="M60 210a180 180 0 0 1 360 0"/>
+        <g class="stroke-thin">
+          <path d="M78 172l26-9M120 108l19-19M186 66l9-25M294 66l-9-25M360 108l-19-19M402 172l-26-9"/>
+        </g>
+        <path class="stroke" d="M240 210L392 148"/>
+        <circle class="ink-dark" cx="240" cy="210" r="16"/>
+        <text class="mono" x="418" y="132" text-anchor="end" font-size="22">10/10</text>
+        <g class="op ink-yellow"><path d="M120 236h240a18 18 0 0 1 18 18v18a18 18 0 0 1-18 18H120a18 18 0 0 1-18-18v-18a18 18 0 0 1 18-18z"/></g>
+        <path class="stroke-thin" d="M120 236h240a18 18 0 0 1 18 18v18a18 18 0 0 1-18 18H120a18 18 0 0 1-18-18v-18a18 18 0 0 1 18-18z"/>
+        <text class="mono" x="240" y="270" text-anchor="middle" font-size="17">……言之无物</text>
+      </svg>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 6. PAYOFF ================= -->
+<section class="wrap rise">
+  <span class="tag">为什么重要</span>
+  <h2 style="margin-top:20px">许多好习惯，就这样练出来。</h2>
+  <div class="duo" style="grid-template-columns:1fr">
+    <svg class="art art-wide" viewBox="0 0 720 200" role="img" aria-label="训练出的三种习惯：回答问题、拒绝不当请求、逐步推理。">
+      <g class="op ink-yellow"><circle cx="110" cy="80" r="58"/></g>
+      <path class="stroke" d="M84 62h52M84 82h52M84 102h30"/>
+      <text class="mono" x="110" y="178" text-anchor="middle" font-size="17">回答问题</text>
+
+      <g class="op ink-pink"><circle cx="360" cy="80" r="58"/></g>
+      <path class="stroke" d="M334 80h52"/>
+      <text class="mono" x="360" y="178" text-anchor="middle" font-size="17">懂得拒绝</text>
+
+      <g class="op ink-blue"><circle cx="610" cy="80" r="58"/></g>
+      <path class="stroke" d="M578 106l20-24 20 20 24-38"/>
+      <text class="mono" x="610" y="178" text-anchor="middle" font-size="17">逐步思考</text>
+    </svg>
+  </div>
+  <p style="margin-top:8px">阅读互联网让它积累知识，练习让它学会好好回应。</p>
+</section>
+
+<div class="wrap"><div class="rule"></div></div>
+
+<!-- ================= CLOSER ================= -->
+<section class="wrap closer rise">
+  <h2>尝试。评分。<br>微调。再来。</h2>
+  <p class="lede" style="margin:22px auto 0">这就是核心思路。其余都是如何把它做好的工程细节。</p>
+</section>
+
+<script>
+  const io = new IntersectionObserver((es)=>{
+    es.forEach(e=>{ if(e.isIntersecting){ e.target.classList.add('in'); io.unobserve(e.target); } });
+  },{threshold:.12});
+  document.querySelectorAll('.rise').forEach(el=>io.observe(el));
+</script>
+</body>
+</html>

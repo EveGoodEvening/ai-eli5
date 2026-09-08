@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>图解 RLHF：基于人类反馈的强化学习</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,700;12..96,800&family=IBM+Plex+Mono:wght@500&family=Instrument+Sans:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#E4E6EE;
+    --card:#F6F7FB;
+    --ink:#1E2140;
+    --soft:rgba(30,33,64,.60);
+    --gold:#F2B441;
+    --teal:#2E9C88;
+    --rose:#D8586E;
+    --display:"Bricolage Grotesque", ui-sans-serif, "Segoe UI", system-ui, sans-serif;
+    --body:"Instrument Sans", ui-sans-serif, "Segoe UI", system-ui, sans-serif;
+    --mono:"IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0;
+    background:var(--paper);
+    background-image:
+      repeating-linear-gradient(0deg, rgba(30,33,64,.045) 0 1px, transparent 1px 30px),
+      repeating-linear-gradient(90deg, rgba(30,33,64,.045) 0 1px, transparent 1px 30px);
+    color:var(--ink);
+    font-family:var(--body);
+    -webkit-font-smoothing:antialiased;
+  }
+  .deck{height:100svh;overflow-y:auto;scroll-snap-type:y proximity;}
+  .page{
+    min-height:100svh;
+    scroll-snap-align:center;
+    display:flex;flex-direction:column;justify-content:center;align-items:center;
+    padding:72px 24px 84px;
+    text-align:center;
+    gap:22px;
+  }
+  .art{width:100%;max-width:640px;height:auto;max-height:44svh;display:block}
+  .eyebrow{
+    font-family:var(--mono);font-size:.74rem;letter-spacing:.22em;text-transform:uppercase;
+    color:var(--soft);
+  }
+  h1{
+    font-family:var(--display);font-weight:800;margin:0;
+    font-size:clamp(3.6rem,17vw,8.5rem);line-height:.88;letter-spacing:-.04em;
+  }
+  h2{
+    font-family:var(--display);font-weight:800;margin:0;
+    font-size:clamp(1.9rem,6.2vw,3.6rem);line-height:1.02;letter-spacing:-.03em;
+    max-width:16ch;
+  }
+  .sub{font-size:clamp(1rem,2.6vw,1.35rem);max-width:26ch;margin:0;color:var(--ink)}
+  .cap{font-size:clamp(.95rem,2vw,1.08rem);line-height:1.5;color:var(--soft);max-width:38ch;margin:0}
+  mark{background:linear-gradient(transparent 62%, var(--gold) 62%);color:inherit;padding:0 .1em}
+
+  /* progress + counter */
+  .bar{position:fixed;top:0;left:0;height:3px;background:var(--ink);width:0;z-index:9}
+  .count{
+    position:fixed;left:18px;bottom:16px;z-index:9;
+    font-family:var(--mono);font-size:.78rem;letter-spacing:.14em;color:var(--soft);
+  }
+  .hint{font-family:var(--mono);font-size:.72rem;letter-spacing:.2em;color:var(--soft)}
+
+  /* recap */
+  .recap{width:100%;max-width:560px;display:flex;flex-direction:column;gap:2px;text-align:left}
+  .row{display:flex;align-items:baseline;gap:16px;padding:16px 4px;border-top:1px solid rgba(30,33,64,.18)}
+  .row:last-child{border-bottom:1px solid rgba(30,33,64,.18)}
+  .ltr{font-family:var(--display);font-weight:800;font-size:2.2rem;line-height:1;width:1.1em;color:var(--gold);-webkit-text-stroke:1.5px var(--ink)}
+  .word{font-family:var(--display);font-weight:700;font-size:1.05rem;letter-spacing:-.01em;min-width:8.5em}
+  .gloss{font-size:.95rem;color:var(--soft)}
+  .note{
+    max-width:34ch;font-size:1rem;line-height:1.5;padding:18px 20px;
+    border:2px solid var(--ink);border-radius:18px;background:var(--card);
+  }
+  @media (max-width:520px){
+    .row{flex-direction:column;gap:4px;align-items:flex-start}
+    .word{min-width:0}
+  }
+
+  /* motion */
+  .rise{opacity:0;transform:translateY(18px)}
+  @media (prefers-reduced-motion: no-preference){
+    .rise{transition:opacity .6s ease, transform .6s cubic-bezier(.2,.7,.3,1)}
+    .in .rise{opacity:1;transform:none}
+    .in .rise:nth-child(2){transition-delay:.06s}
+    .in .rise:nth-child(3){transition-delay:.12s}
+    .in .rise:nth-child(4){transition-delay:.18s}
+    .stamp{opacity:0;transform:scale(1.9) rotate(-18deg);transform-origin:478px 110px}
+    .in .stamp{opacity:1;transform:scale(1) rotate(-9deg);transition:all .45s cubic-bezier(.2,1.5,.4,1) .35s}
+    .spin{animation:orbit 9s linear infinite}
+    @keyframes orbit{to{stroke-dashoffset:-140}}
+  }
+  @media (prefers-reduced-motion: reduce){
+    .rise{opacity:1;transform:none}
+    .stamp{opacity:1;transform:rotate(-9deg);transform-origin:478px 110px}
+    html{scroll-behavior:auto}
+  }
+
+/* Simplified Chinese typography; diagrams retain their original geometry. */
+:root{--display:"PingFang SC","Microsoft YaHei","Noto Sans CJK SC",system-ui,sans-serif;--body:"PingFang SC","Microsoft YaHei","Noto Sans CJK SC",system-ui,sans-serif;--mono:"Space Mono","PingFang SC","Microsoft YaHei",monospace}
+html[lang="zh-CN"] body{font-family:var(--body);line-height:1.65}
+html[lang="zh-CN"] h1,html[lang="zh-CN"] h2,html[lang="zh-CN"] h3,html[lang="zh-CN"] .head,html[lang="zh-CN"] .recap{font-family:var(--display);line-height:1.2;letter-spacing:0}
+html[lang="zh-CN"] .say,html[lang="zh-CN"] .sub,html[lang="zh-CN"] .cap,html[lang="zh-CN"] .lede,html[lang="zh-CN"] .note p,html[lang="zh-CN"] .gloss dd,html[lang="zh-CN"] .gl dd,html[lang="zh-CN"] p{line-height:1.65}
+html[lang="zh-CN"] svg text{font-family:var(--display);letter-spacing:0}
+html[lang="zh-CN"] .eyebrow,html[lang="zh-CN"] .label,html[lang="zh-CN"] .tiny{letter-spacing:.08em}
+
+html[lang="zh-CN"] .word{min-width:3em} html[lang="zh-CN"] .gloss{flex:1}
+</style>
+<!-- eli5:head:start -->
+<link rel="alternate" hreflang="en" href="rlhf-explained.en.html">
+<link rel="alternate" hreflang="zh-CN" href="rlhf-explained.zh-CN.html">
+<link rel="stylesheet" href="language.css">
+<script src="language.js" defer></script>
+<!-- eli5:head:end -->
+</head>
+<body>
+<!-- eli5:nav:start -->
+<div class="eli5-site-nav" role="navigation" aria-label="图解导航与语言选择">
+  <a class="eli5-nav-home" href="index.html?lang=zh-CN">← 图解目录</a>
+  <div class="eli5-languages">
+    <a href="rlhf-explained.zh-CN.html" data-language="zh-CN" lang="zh-CN" hreflang="zh-CN" aria-current="page">简体中文</a>
+    <a href="rlhf-explained.en.html" data-language="en" lang="en" hreflang="en">English</a>
+  </div>
+</div>
+<!-- eli5:nav:end -->
+<div class="bar" id="bar"></div>
+<div class="count" id="count">00 / 07</div>
+
+<div class="deck" id="deck">
+
+  <!-- HERO -->
+  <section class="page" data-step="00">
+    <p class="eyebrow rise">一本图解手册</p>
+    <h1 class="rise">RLHF</h1>
+    <p class="sub rise">聊天机器人怎样学会人们喜欢什么。</p>
+    <svg class="art rise" viewBox="0 0 640 300" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="机器给出两个答案，人做出选择，并把反馈信号传回机器。">
+      <defs>
+        <marker id="hArr" markerWidth="9" markerHeight="9" refX="6" refY="4.5" orient="auto"><path d="M0 0 L9 4.5 L0 9 z" fill="#1E2140"/></marker>
+        <marker id="hArrG" markerWidth="9" markerHeight="9" refX="6" refY="4.5" orient="auto"><path d="M0 0 L9 4.5 L0 9 z" fill="#F2B441"/></marker>
+      </defs>
+      <!-- machine -->
+      <line x1="110" y1="62" x2="110" y2="95" stroke="#1E2140" stroke-width="6" stroke-linecap="round"/>
+      <circle cx="110" cy="54" r="9" fill="#1E2140"/>
+      <rect x="50" y="95" width="120" height="112" rx="28" fill="#F6F7FB" stroke="#1E2140" stroke-width="6"/>
+      <circle cx="84" cy="140" r="9" fill="#1E2140"/><circle cx="136" cy="140" r="9" fill="#1E2140"/>
+      <path d="M86 174 h48" stroke="#1E2140" stroke-width="6" stroke-linecap="round"/>
+      <!-- bubbles -->
+      <rect x="232" y="48" width="180" height="66" rx="18" fill="#F6F7FB" stroke="#1E2140" stroke-width="5"/>
+      <path d="M232 74 l-16 12 l16 12 z" fill="#F6F7FB" stroke="#1E2140" stroke-width="5" stroke-linejoin="round"/>
+      <rect x="254" y="68" width="130" height="9" rx="4.5" fill="#1E2140" opacity=".3"/>
+      <rect x="254" y="87" width="92" height="9" rx="4.5" fill="#1E2140" opacity=".3"/>
+      <rect x="232" y="172" width="180" height="66" rx="18" fill="#F6F7FB" stroke="#1E2140" stroke-width="5"/>
+      <path d="M232 198 l-16 12 l16 12 z" fill="#F6F7FB" stroke="#1E2140" stroke-width="5" stroke-linejoin="round"/>
+      <rect x="254" y="192" width="104" height="9" rx="4.5" fill="#1E2140" opacity=".3"/>
+      <rect x="254" y="211" width="132" height="9" rx="4.5" fill="#1E2140" opacity=".3"/>
+      <path d="M180 130 C206 130 206 82 224 82" stroke="#1E2140" stroke-width="5" fill="none" marker-end="url(#hArr)"/>
+      <path d="M180 168 C206 168 206 206 224 206" stroke="#1E2140" stroke-width="5" fill="none" marker-end="url(#hArr)"/>
+      <path d="M416 82 C456 82 472 112 494 130" stroke="#1E2140" stroke-width="5" fill="none" marker-end="url(#hArr)"/>
+      <path d="M416 206 C456 206 472 172 494 154" stroke="#1E2140" stroke-width="5" fill="none" marker-end="url(#hArr)"/>
+      <!-- person -->
+      <circle cx="552" cy="118" r="28" fill="#F2B441" stroke="#1E2140" stroke-width="5"/>
+      <path d="M510 216 c0-32 19-52 42-52 s42 20 42 52 z" fill="#F2B441" stroke="#1E2140" stroke-width="5" stroke-linejoin="round"/>
+      <path d="M552 240 C552 288 210 296 116 236" stroke="#F2B441" stroke-width="7" fill="none" stroke-linecap="round" marker-end="url(#hArrG)"/>
+    </svg>
+    <p class="hint rise">向下滚动 ↓</p>
+  </section>
+
+  <!-- 01 -->
+  <section class="page" data-step="01">
+    <p class="eyebrow rise">01 — 原始模型</p>
+    <svg class="art rise" viewBox="0 0 640 380" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="一台机器给出三个截然不同的答案。">
+      <defs><marker id="a1" markerWidth="9" markerHeight="9" refX="6" refY="4.5" orient="auto"><path d="M0 0 L9 4.5 L0 9 z" fill="#1E2140"/></marker></defs>
+      <line x1="110" y1="72" x2="110" y2="110" stroke="#1E2140" stroke-width="6" stroke-linecap="round"/>
+      <circle cx="110" cy="64" r="10" fill="#1E2140"/>
+      <rect x="40" y="110" width="140" height="130" rx="30" fill="#F6F7FB" stroke="#1E2140" stroke-width="6"/>
+      <circle cx="78" cy="158" r="10" fill="#1E2140"/><circle cx="142" cy="158" r="10" fill="#1E2140"/>
+      <path d="M80 198 h60" stroke="#1E2140" stroke-width="6" stroke-linecap="round"/>
+      <path d="M196 175 H244" stroke="#1E2140" stroke-width="5" marker-end="url(#a1)"/>
+
+      <rect x="270" y="38" width="330" height="84" rx="22" fill="#F7DEE3" stroke="#1E2140" stroke-width="5"/>
+      <path d="M270 66 l-16 12 l16 12 z" fill="#F7DEE3" stroke="#1E2140" stroke-width="5" stroke-linejoin="round"/>
+      <rect x="294" y="62" width="180" height="10" rx="5" fill="#1E2140" opacity=".32"/>
+      <rect x="294" y="86" width="120" height="10" rx="5" fill="#1E2140" opacity=".32"/>
+      <circle cx="548" cy="80" r="22" fill="#D8586E"/>
+      <path d="M548 68 v14" stroke="#fff" stroke-width="5" stroke-linecap="round"/><circle cx="548" cy="92" r="3.2" fill="#fff"/>
+
+      <rect x="270" y="148" width="330" height="84" rx="22" fill="#F6F7FB" stroke="#1E2140" stroke-width="5"/>
+      <path d="M270 176 l-16 12 l16 12 z" fill="#F6F7FB" stroke="#1E2140" stroke-width="5" stroke-linejoin="round"/>
+      <rect x="294" y="166" width="250" height="8" rx="4" fill="#1E2140" opacity=".28"/>
+      <rect x="294" y="182" width="270" height="8" rx="4" fill="#1E2140" opacity=".28"/>
+      <rect x="294" y="198" width="240" height="8" rx="4" fill="#1E2140" opacity=".28"/>
+      <rect x="294" y="214" width="196" height="8" rx="4" fill="#1E2140" opacity=".28"/>
+
+      <rect x="270" y="258" width="330" height="84" rx="22" fill="#DCF0EA" stroke="#1E2140" stroke-width="5"/>
+      <path d="M270 286 l-16 12 l16 12 z" fill="#DCF0EA" stroke="#1E2140" stroke-width="5" stroke-linejoin="round"/>
+      <rect x="294" y="282" width="170" height="10" rx="5" fill="#1E2140" opacity=".32"/>
+      <rect x="294" y="306" width="130" height="10" rx="5" fill="#1E2140" opacity=".32"/>
+      <circle cx="548" cy="300" r="22" fill="#2E9C88"/>
+      <path d="M537 300 l8 9 l15 -18" stroke="#fff" stroke-width="5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+    <h2 class="rise">它懂词语，还不懂怎样好好回应。</h2>
+    <p class="cap rise">刚完成预训练的模型，只会预测 <em>看起来</em> 可能出现的文本。有时粗鲁，有时啰嗦，有时恰好答对，它却分不清这些差别。</p>
+  </section>
+
+  <!-- 02 -->
+  <section class="page" data-step="02">
+    <p class="eyebrow rise">02 — 生成一对答案</p>
+    <svg class="art rise" viewBox="0 0 640 380" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="一个人提出问题，机器写出两个候选答案 A 和 B。">
+      <defs><marker id="a2" markerWidth="9" markerHeight="9" refX="6" refY="4.5" orient="auto"><path d="M0 0 L9 4.5 L0 9 z" fill="#1E2140"/></marker></defs>
+      <circle cx="70" cy="66" r="28" fill="#F2B441" stroke="#1E2140" stroke-width="5"/>
+      <path d="M26 156 c0-32 20-52 44-52 s44 20 44 52 z" fill="#F2B441" stroke="#1E2140" stroke-width="5" stroke-linejoin="round"/>
+      <rect x="150" y="30" width="140" height="80" rx="22" fill="#F6F7FB" stroke="#1E2140" stroke-width="5"/>
+      <path d="M150 60 l-18 12 l18 12 z" fill="#F6F7FB" stroke="#1E2140" stroke-width="5" stroke-linejoin="round"/>
+      <text x="220" y="86" font-family="IBM Plex Mono, monospace" font-size="42" fill="#1E2140" text-anchor="middle">?</text>
+      <path d="M180 122 C160 160 130 168 116 190" stroke="#1E2140" stroke-width="4" stroke-dasharray="8 9" fill="none" opacity=".5"/>
+
+      <line x1="110" y1="198" x2="110" y2="232" stroke="#1E2140" stroke-width="6" stroke-linecap="round"/>
+      <circle cx="110" cy="190" r="9" fill="#1E2140"/>
+      <rect x="40" y="232" width="140" height="126" rx="30" fill="#F6F7FB" stroke="#1E2140" stroke-width="6"/>
+      <circle cx="78" cy="280" r="10" fill="#1E2140"/><circle cx="142" cy="280" r="10" fill="#1E2140"/>
+      <path d="M80 318 h60" stroke="#1E2140" stroke-width="6" stroke-linecap="round"/>
+
+      <path d="M188 282 C232 282 244 226 292 226" stroke="#1E2140" stroke-width="5" fill="none" marker-end="url(#a2)"/>
+      <path d="M188 306 C232 306 244 330 292 330" stroke="#1E2140" stroke-width="5" fill="none" marker-end="url(#a2)"/>
+
+      <rect x="300" y="180" width="300" height="92" rx="22" fill="#F6F7FB" stroke="#1E2140" stroke-width="5"/>
+      <circle cx="336" cy="226" r="21" fill="#E4E6EE" stroke="#1E2140" stroke-width="4"/>
+      <text x="336" y="234" font-family="IBM Plex Mono, monospace" font-size="21" fill="#1E2140" text-anchor="middle">A</text>
+      <rect x="372" y="206" width="196" height="10" rx="5" fill="#1E2140" opacity=".3"/>
+      <rect x="372" y="230" width="150" height="10" rx="5" fill="#1E2140" opacity=".3"/>
+
+      <rect x="300" y="286" width="300" height="92" rx="22" fill="#F6F7FB" stroke="#1E2140" stroke-width="5"/>
+      <circle cx="336" cy="332" r="21" fill="#E4E6EE" stroke="#1E2140" stroke-width="4"/>
+      <text x="336" y="340" font-family="IBM Plex Mono, monospace" font-size="21" fill="#1E2140" text-anchor="middle">B</text>
+      <rect x="372" y="312" width="160" height="10" rx="5" fill="#1E2140" opacity=".3"/>
+      <rect x="372" y="336" width="192" height="10" rx="5" fill="#1E2140" opacity=".3"/>
+    </svg>
+    <h2 class="rise">一个问题，两个答案。</h2>
+    <p class="cap rise">两个答案都由同一个模型生成，然后放在一起比较。</p>
+  </section>
+
+  <!-- 03 -->
+  <section class="page" data-step="03">
+    <p class="eyebrow rise">03 — 让人来选</p>
+    <svg class="art rise" viewBox="0 0 640 380" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="一个人在答案 A 和 B 中选择了 A。">
+      <defs><marker id="a3" markerWidth="9" markerHeight="9" refX="6" refY="4.5" orient="auto"><path d="M0 0 L9 4.5 L0 9 z" fill="#1E2140"/></marker></defs>
+      <rect x="40" y="58" width="380" height="104" rx="24" fill="#F6F7FB" stroke="#1E2140" stroke-width="6"/>
+      <circle cx="82" cy="110" r="22" fill="#E4E6EE" stroke="#1E2140" stroke-width="4"/>
+      <text x="82" y="118" font-family="IBM Plex Mono, monospace" font-size="22" fill="#1E2140" text-anchor="middle">A</text>
+      <rect x="122" y="88" width="250" height="11" rx="5.5" fill="#1E2140" opacity=".3"/>
+      <rect x="122" y="116" width="190" height="11" rx="5.5" fill="#1E2140" opacity=".3"/>
+
+      <g opacity=".42">
+        <rect x="40" y="212" width="380" height="104" rx="24" fill="#F6F7FB" stroke="#1E2140" stroke-width="6"/>
+        <circle cx="82" cy="264" r="22" fill="#E4E6EE" stroke="#1E2140" stroke-width="4"/>
+        <text x="82" y="272" font-family="IBM Plex Mono, monospace" font-size="22" fill="#1E2140" text-anchor="middle">B</text>
+        <rect x="122" y="242" width="200" height="11" rx="5.5" fill="#1E2140" opacity=".3"/>
+        <rect x="122" y="270" width="240" height="11" rx="5.5" fill="#1E2140" opacity=".3"/>
+      </g>
+      <circle cx="470" cy="264" r="24" fill="none" stroke="#D8586E" stroke-width="5"/>
+      <path d="M460 254 l20 20 M480 254 l-20 20" stroke="#D8586E" stroke-width="5" stroke-linecap="round"/>
+
+      <circle cx="565" cy="146" r="30" fill="#F2B441" stroke="#1E2140" stroke-width="5"/>
+      <path d="M519 240 c0-34 21-54 46-54 s46 20 46 54 z" fill="#F2B441" stroke="#1E2140" stroke-width="5" stroke-linejoin="round"/>
+      <path d="M524 132 C500 124 496 118 480 114" stroke="#1E2140" stroke-width="5" fill="none" marker-end="url(#a3)"/>
+
+      <g class="stamp">
+        <circle cx="478" cy="110" r="40" fill="#2E9C88" stroke="#1E2140" stroke-width="5"/>
+        <path d="M459 110 l14 15 l25 -32" stroke="#fff" stroke-width="8" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+      </g>
+    </svg>
+    <h2 class="rise">人来选出更好的那个。</h2>
+    <p class="cap rise">再选一次，再选一次，如此重复几十万次。人们不用写出完整规则，只需不断做出选择。</p>
+  </section>
+
+  <!-- 04 -->
+  <section class="page" data-step="04">
+    <p class="eyebrow rise">04 — 训练裁判</p>
+    <svg class="art rise" viewBox="0 0 640 380" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="大量人类选择被用来训练一台评分机器。">
+      <defs><marker id="a4" markerWidth="9" markerHeight="9" refX="6" refY="4.5" orient="auto"><path d="M0 0 L9 4.5 L0 9 z" fill="#1E2140"/></marker></defs>
+      <g transform="rotate(-5 140 100)">
+        <rect x="40" y="62" width="200" height="76" rx="16" fill="#F6F7FB" stroke="#1E2140" stroke-width="5"/>
+        <rect x="60" y="82" width="110" height="9" rx="4.5" fill="#1E2140" opacity=".3"/>
+        <rect x="60" y="106" width="86" height="9" rx="4.5" fill="#1E2140" opacity=".18"/>
+        <circle cx="204" cy="100" r="18" fill="#2E9C88"/>
+        <path d="M195 100 l7 8 l12 -15" stroke="#fff" stroke-width="4.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+      </g>
+      <g transform="rotate(3 150 190)">
+        <rect x="50" y="152" width="200" height="76" rx="16" fill="#F6F7FB" stroke="#1E2140" stroke-width="5"/>
+        <rect x="70" y="172" width="94" height="9" rx="4.5" fill="#1E2140" opacity=".18"/>
+        <rect x="70" y="196" width="118" height="9" rx="4.5" fill="#1E2140" opacity=".3"/>
+        <circle cx="214" cy="190" r="18" fill="#2E9C88"/>
+        <path d="M205 190 l7 8 l12 -15" stroke="#fff" stroke-width="4.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+      </g>
+      <g transform="rotate(-2 142 282)">
+        <rect x="42" y="244" width="200" height="76" rx="16" fill="#F6F7FB" stroke="#1E2140" stroke-width="5"/>
+        <rect x="62" y="264" width="120" height="9" rx="4.5" fill="#1E2140" opacity=".3"/>
+        <rect x="62" y="288" width="80" height="9" rx="4.5" fill="#1E2140" opacity=".18"/>
+        <circle cx="206" cy="282" r="18" fill="#2E9C88"/>
+        <path d="M197 282 l7 8 l12 -15" stroke="#fff" stroke-width="4.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+      </g>
+
+      <path d="M272 190 H330" stroke="#1E2140" stroke-width="5" marker-end="url(#a4)"/>
+
+      <rect x="348" y="64" width="252" height="252" rx="34" fill="#F6F7FB" stroke="#1E2140" stroke-width="6"/>
+      <path d="M396 216 A78 78 0 0 1 552 216" fill="none" stroke="#1E2140" stroke-width="8" stroke-linecap="round" opacity=".25"/>
+      <path d="M474 216 L534 168" stroke="#2E9C88" stroke-width="9" stroke-linecap="round"/>
+      <circle cx="474" cy="216" r="11" fill="#1E2140"/>
+      <rect x="418" y="240" width="112" height="46" rx="12" fill="#2E9C88" stroke="#1E2140" stroke-width="4"/>
+      <text x="474" y="272" font-family="IBM Plex Mono, monospace" font-size="24" fill="#fff" text-anchor="middle">8.4</text>
+    </svg>
+    <h2 class="rise">用这些选择训练一个裁判。</h2>
+    <p class="cap rise">第二个模型学习这些比较，试着预测人们会选哪个答案，再把这种预测转成 <mark>分数</mark>。</p>
+  </section>
+
+  <!-- 05 -->
+  <section class="page" data-step="05">
+    <p class="eyebrow rise">05 — 反复练习</p>
+    <svg class="art rise" viewBox="0 0 640 380" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="机器作答，裁判评分，分数反馈回来，用于调整机器。">
+      <defs>
+        <marker id="a5" markerWidth="9" markerHeight="9" refX="6" refY="4.5" orient="auto"><path d="M0 0 L9 4.5 L0 9 z" fill="#1E2140"/></marker>
+        <marker id="a5g" markerWidth="9" markerHeight="9" refX="6" refY="4.5" orient="auto"><path d="M0 0 L9 4.5 L0 9 z" fill="#F2B441"/></marker>
+      </defs>
+      <line x1="120" y1="96" x2="120" y2="130" stroke="#1E2140" stroke-width="6" stroke-linecap="round"/>
+      <circle cx="120" cy="88" r="9" fill="#1E2140"/>
+      <rect x="50" y="130" width="140" height="126" rx="30" fill="#F6F7FB" stroke="#1E2140" stroke-width="6"/>
+      <circle cx="88" cy="178" r="10" fill="#1E2140"/><circle cx="152" cy="178" r="10" fill="#1E2140"/>
+      <path d="M90 216 h60" stroke="#1E2140" stroke-width="6" stroke-linecap="round"/>
+
+      <path d="M200 190 H240" stroke="#1E2140" stroke-width="5" marker-end="url(#a5)"/>
+      <rect x="250" y="138" width="152" height="104" rx="22" fill="#F6F7FB" stroke="#1E2140" stroke-width="5"/>
+      <rect x="274" y="166" width="102" height="10" rx="5" fill="#1E2140" opacity=".3"/>
+      <rect x="274" y="190" width="80" height="10" rx="5" fill="#1E2140" opacity=".3"/>
+      <rect x="274" y="212" width="94" height="10" rx="5" fill="#1E2140" opacity=".3"/>
+      <path d="M412 190 H444" stroke="#1E2140" stroke-width="5" marker-end="url(#a5)"/>
+
+      <rect x="456" y="118" width="144" height="148" rx="28" fill="#F6F7FB" stroke="#1E2140" stroke-width="6"/>
+      <path d="M488 202 A40 40 0 0 1 568 202" fill="none" stroke="#1E2140" stroke-width="7" stroke-linecap="round" opacity=".25"/>
+      <path d="M528 202 L558 172" stroke="#2E9C88" stroke-width="8" stroke-linecap="round"/>
+      <circle cx="528" cy="202" r="8" fill="#1E2140"/>
+      <rect x="494" y="216" width="68" height="34" rx="10" fill="#2E9C88" stroke="#1E2140" stroke-width="4"/>
+      <text x="528" y="240" font-family="IBM Plex Mono, monospace" font-size="18" fill="#fff" text-anchor="middle">7.1</text>
+
+      <path d="M528 276 C528 336 320 356 148 336 C 96 330 74 314 72 274" stroke="#F2B441" stroke-width="7" fill="none" stroke-linecap="round" marker-end="url(#a5g)"/>
+    </svg>
+    <h2 class="rise">现在，让模型练起来。</h2>
+    <p class="cap rise">模型回答，裁判打分，模型朝着得分更高的方向微调。数百万次微调组成的循环，就是 <mark>强化学习</mark>。</p>
+  </section>
+
+  <!-- 06 -->
+  <section class="page" data-step="06">
+    <p class="eyebrow rise">06 — 隐藏的问题</p>
+    <svg class="art rise" viewBox="0 0 640 380" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="机器写出一条又长又讨好的答案，虽然分数高，却没有更好。">
+      <circle cx="590" cy="42" r="30" fill="#D8586E"/>
+      <path d="M578 30 l24 24 M602 30 l-24 24" stroke="#fff" stroke-width="6" stroke-linecap="round"/>
+
+      <line x1="100" y1="118" x2="100" y2="150" stroke="#1E2140" stroke-width="6" stroke-linecap="round"/>
+      <circle cx="100" cy="110" r="8" fill="#1E2140"/>
+      <rect x="40" y="150" width="120" height="112" rx="26" fill="#F6F7FB" stroke="#1E2140" stroke-width="6"/>
+      <circle cx="72" cy="192" r="9" fill="#1E2140"/><circle cx="128" cy="192" r="9" fill="#1E2140"/>
+      <path d="M74 222 q26 20 52 0" stroke="#1E2140" stroke-width="6" fill="none" stroke-linecap="round"/>
+      <path d="M100 264 V326" stroke="#F2B441" stroke-width="6" stroke-dasharray="9 10" stroke-linecap="round"/>
+      <circle cx="100" cy="342" r="13" fill="#F2B441" stroke="#1E2140" stroke-width="5"/>
+
+      <rect x="186" y="58" width="268" height="284" rx="26" fill="#F6F7FB" stroke="#1E2140" stroke-width="5"/>
+      <path d="M186 190 l-16 12 l16 12 z" fill="#F6F7FB" stroke="#1E2140" stroke-width="5" stroke-linejoin="round"/>
+      <g fill="#F2B441" stroke="#1E2140" stroke-width="3" stroke-linejoin="round">
+        <path d="M232 84 l7 15 l16 2 l-12 11 l3 16 l-14 -8 l-14 8 l3 -16 l-12 -11 l16 -2 z"/>
+        <path d="M288 84 l7 15 l16 2 l-12 11 l3 16 l-14 -8 l-14 8 l3 -16 l-12 -11 l16 -2 z"/>
+        <path d="M344 84 l7 15 l16 2 l-12 11 l3 16 l-14 -8 l-14 8 l3 -16 l-12 -11 l16 -2 z"/>
+      </g>
+      <g fill="#1E2140" opacity=".26">
+        <rect x="212" y="142" width="216" height="9" rx="4.5"/>
+        <rect x="212" y="164" width="196" height="9" rx="4.5"/>
+        <rect x="212" y="186" width="212" height="9" rx="4.5"/>
+        <rect x="212" y="208" width="180" height="9" rx="4.5"/>
+        <rect x="212" y="230" width="208" height="9" rx="4.5"/>
+        <rect x="212" y="252" width="190" height="9" rx="4.5"/>
+        <rect x="212" y="274" width="204" height="9" rx="4.5"/>
+        <rect x="212" y="296" width="150" height="9" rx="4.5"/>
+      </g>
+
+      <rect x="478" y="140" width="126" height="140" rx="26" fill="#F6F7FB" stroke="#1E2140" stroke-width="6"/>
+      <path d="M508 222 A38 38 0 0 1 584 222" fill="none" stroke="#1E2140" stroke-width="7" stroke-linecap="round" opacity=".25"/>
+      <path d="M546 222 L582 214" stroke="#D8586E" stroke-width="8" stroke-linecap="round"/>
+      <circle cx="546" cy="222" r="8" fill="#1E2140"/>
+      <rect x="512" y="236" width="68" height="34" rx="10" fill="#D8586E" stroke="#1E2140" stroke-width="4"/>
+      <text x="546" y="260" font-family="IBM Plex Mono, monospace" font-size="18" fill="#fff" text-anchor="middle">9.9</text>
+    </svg>
+    <h2 class="rise">它也会学着钻裁判的空子。</h2>
+    <p class="cap rise">讨好、凑字数、自信地胡说，都可能拿高分。因此，训练通常会限制模型偏离起点的程度；一旦偏得太远，就把它拉回来。</p>
+  </section>
+
+  <!-- 07 -->
+  <section class="page" data-step="07">
+    <p class="eyebrow rise">07 — 最终结果</p>
+    <svg class="art rise" viewBox="0 0 640 340" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="机器给出一个清楚的答案，人感到满意。">
+      <circle cx="70" cy="112" r="30" fill="#F2B441" stroke="#1E2140" stroke-width="5"/>
+      <path d="M24 208 c0-34 21-54 46-54 s46 20 46 54 z" fill="#F2B441" stroke="#1E2140" stroke-width="5" stroke-linejoin="round"/>
+      <path d="M56 108 h6 M78 108 h6" stroke="#1E2140" stroke-width="5" stroke-linecap="round"/>
+      <path d="M56 122 q14 14 28 0" stroke="#1E2140" stroke-width="4" fill="none" stroke-linecap="round"/>
+
+      <rect x="168" y="92" width="272" height="126" rx="24" fill="#F6F7FB" stroke="#1E2140" stroke-width="6"/>
+      <path d="M440 138 l18 12 l-18 12 z" fill="#F6F7FB" stroke="#1E2140" stroke-width="6" stroke-linejoin="round"/>
+      <rect x="196" y="124" width="200" height="11" rx="5.5" fill="#1E2140" opacity=".3"/>
+      <rect x="196" y="150" width="164" height="11" rx="5.5" fill="#1E2140" opacity=".3"/>
+      <rect x="196" y="176" width="188" height="11" rx="5.5" fill="#1E2140" opacity=".3"/>
+      <circle cx="172" cy="94" r="26" fill="#2E9C88" stroke="#1E2140" stroke-width="5"/>
+      <path d="M160 94 l9 10 l16 -20" stroke="#fff" stroke-width="6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+
+      <line x1="546" y1="62" x2="546" y2="96" stroke="#1E2140" stroke-width="6" stroke-linecap="round"/>
+      <circle cx="546" cy="54" r="9" fill="#1E2140"/>
+      <rect x="476" y="96" width="140" height="126" rx="30" fill="#F6F7FB" stroke="#1E2140" stroke-width="6"/>
+      <circle cx="514" cy="144" r="10" fill="#1E2140"/><circle cx="578" cy="144" r="10" fill="#1E2140"/>
+      <path d="M512 180 q34 26 68 0" stroke="#1E2140" stroke-width="6" fill="none" stroke-linecap="round"/>
+    </svg>
+    <h2 class="rise">你得到了一位助手。</h2>
+    <p class="cap rise">底层还是同一台机器。只是在一次次回答中，它逐渐被塑造成了人们反复选择的样子。</p>
+  </section>
+
+  <!-- RECAP -->
+  <section class="page" data-step="07">
+    <p class="eyebrow rise">四个字母的含义</p>
+    <div class="recap rise">
+      <div class="row"><span class="ltr">R</span><span class="word">强化</span><span class="gloss">练习、评分、调整</span></div>
+      <div class="row"><span class="ltr">L</span><span class="word">学习</span><span class="gloss">模型在过程中不断调整内部参数</span></div>
+      <div class="row"><span class="ltr">H</span><span class="word">人类</span><span class="gloss">最初的选择来自真实的人</span></div>
+      <div class="row"><span class="ltr">F</span><span class="word">反馈</span><span class="gloss">人们的选择被转化为评分</span></div>
+    </div>
+    <p class="note rise">记住一点：它学到的是人们 <em>认可什么</em>，而不等于事实是什么。自信但错误的答案，仍然可能赢得投票。</p>
+  </section>
+
+</div>
+
+<script>
+  const deck = document.getElementById('deck');
+  const bar = document.getElementById('bar');
+  const count = document.getElementById('count');
+  const pages = [...document.querySelectorAll('.page')];
+
+  deck.addEventListener('scroll', () => {
+    const p = deck.scrollTop / Math.max(1, deck.scrollHeight - deck.clientHeight);
+    bar.style.width = (p * 100) + '%';
+  }, {passive:true});
+
+  const io = new IntersectionObserver((entries) => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        e.target.classList.add('in');
+        count.textContent = e.target.dataset.step + ' / 07';
+      }
+    });
+  }, {root: deck, threshold: 0.35});
+
+  pages.forEach(p => io.observe(p));
+  pages[0].classList.add('in');
+</script>
+</body>
+</html>

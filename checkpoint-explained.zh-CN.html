@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="description" content="用大幅图解认识 LLM checkpoint：模型的存档，保存什么，怎样恢复训练。">
+<title>Checkpoint：给大模型存个档</title>
+<style>
+:root{--paper:#edf0f5;--card:#fafbfc;--ink:#16233a;--muted:#59677d;--blue:#2747d8;--yellow:#f3d34c;--pink:#f48fa9;--line:#c4ccda}*{box-sizing:border-box}body{margin:0;color:var(--ink);background:repeating-linear-gradient(0deg,transparent 0 39px,#16233a08 39px 40px),var(--paper);font-family:system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif}a{color:inherit}nav{display:flex;justify-content:space-between;align-items:center;padding:24px 0;font-size:12px;letter-spacing:.08em}nav a{text-decoration:none}main,nav,footer{width:min(1120px,calc(100% - 40px));margin:auto}section{padding:78px 0 88px;border-bottom:1px solid var(--line)}.hero{padding-top:50px}.eyebrow{font-size:12px;letter-spacing:.16em;font-weight:700;color:var(--blue);margin:0 0 20px}.headline{font-size:clamp(45px,7.8vw,94px);line-height:1.12;letter-spacing:-.055em;margin:0;font-weight:900}.headline span{color:var(--blue)}h2{font-size:clamp(30px,4.7vw,54px);line-height:1.22;letter-spacing:-.035em;margin:0}p.lead{font-size:clamp(16px,2vw,22px);color:var(--muted);line-height:1.7;margin:22px 0 34px}.mark{background:linear-gradient(transparent 58%,var(--yellow) 58%)}.art{border:2px solid var(--ink);border-radius:20px;background:var(--card);overflow:hidden;box-shadow:7px 7px 0 #16233a;margin-top:34px}.art svg{display:block;width:100%;height:auto}svg text{font-family:system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;fill:var(--ink)}.note{color:var(--muted);font-size:13px;line-height:1.7;margin:18px 0 0}.duo{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:34px}.box{border:2px solid var(--ink);border-radius:18px;background:var(--card);overflow:hidden}.box svg{display:block;width:100%;height:auto}.box-body{padding:0 26px 28px}.box h3{font-size:25px;margin:0 0 10px}.box p{color:var(--muted);font-size:16px;line-height:1.7;margin:0}.tag{font-size:12px;font-weight:700;letter-spacing:.08em}.controls{padding:24px;display:flex;justify-content:center;flex-wrap:wrap;gap:12px;border-top:1px solid var(--line)}button{font:inherit;font-size:15px;font-weight:650;border:2px solid var(--ink);border-radius:9px;background:white;color:var(--ink);padding:12px 22px;cursor:pointer}button[aria-pressed="true"]{background:var(--blue);color:white;border-color:var(--blue)}button:focus-visible,a:focus-visible{outline:4px solid var(--pink);outline-offset:5px}.status{padding:0 20px 26px;text-align:center;font-size:16px;line-height:1.7;margin:0;min-height:65px}.end{padding:65px 0;text-align:center}.end p{font-size:clamp(25px,4vw,43px);font-weight:800;line-height:1.5;margin:0}footer{padding:24px 0 40px;color:var(--muted);font-size:12px;display:flex;justify-content:space-between;gap:20px}.legend{display:flex;gap:18px;flex-wrap:wrap;margin-top:20px;font-size:13px;color:var(--muted)}.dot{display:inline-block;width:10px;height:10px;border-radius:50%;background:var(--blue);margin-right:7px}.dot.pink{background:var(--pink)}@media(max-width:600px){main,nav,footer{width:calc(100% - 28px)}section{padding:52px 0 58px}.hero{padding-top:32px}.duo{grid-template-columns:1fr}.art{border-radius:12px;box-shadow:4px 4px 0 var(--ink)}.wide{overflow:auto}.wide svg{min-width:650px}.controls{padding:18px 12px;gap:8px}button{padding:10px 13px;font-size:13px}.note{font-size:12px}footer{flex-direction:column}.headline{font-size:clamp(42px,10vw,60px)}}
+</style>
+<!-- eli5:head:start -->
+<link rel="alternate" hreflang="en" href="checkpoint-explained.en.html">
+<link rel="alternate" hreflang="zh-CN" href="checkpoint-explained.zh-CN.html">
+<link rel="stylesheet" href="language.css">
+<script src="language.js" defer></script>
+<!-- eli5:head:end -->
+</head>
+<body>
+<!-- eli5:nav:start -->
+<div class="eli5-site-nav" role="navigation" aria-label="图解导航与语言选择">
+  <a class="eli5-nav-home" href="index.html?lang=zh-CN">← 图解目录</a>
+  <div class="eli5-languages">
+    <a href="checkpoint-explained.zh-CN.html" data-language="zh-CN" lang="zh-CN" hreflang="zh-CN" aria-current="page">简体中文</a>
+    <a href="checkpoint-explained.en.html" data-language="en" lang="en" hreflang="en">English</a>
+  </div>
+</div>
+<!-- eli5:nav:end -->
+<main>
+<section class="hero">
+<p class="eyebrow">一个概念 · 四幅图</p>
+<h1 class="headline">模型也需要<br><span>“存个档”。</span></h1>
+<p class="lead">Checkpoint，就是把模型在某一刻的状态保存下来。</p>
+<div class="art"><svg viewBox="0 0 1000 530" role="img" aria-labelledby="hero-title"><title id="hero-title">模型不断学习，在第 2000 步把当时的模型状态保存成 checkpoint，之后继续训练。</title>
+<defs><pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse"><path d="M32 0H0V32" fill="none" stroke="#16233a" stroke-opacity=".055"/></pattern><marker id="arrow" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto"><path d="M0 0L8 4L0 8" fill="none" stroke="#16233a" stroke-width="1.5"/></marker></defs>
+<rect width="1000" height="530" fill="url(#grid)"/><text x="45" y="48" font-size="13" letter-spacing="3">学习 → 保存 → 继续学习</text>
+<path d="M90 320H900" stroke="#16233a" stroke-width="4" marker-end="url(#arrow)"/>
+<g transform="translate(95 116)"><rect x="6" y="9" width="208" height="156" rx="28" fill="#16233a"/><rect width="208" height="156" rx="28" fill="#dfe5ff" stroke="#16233a" stroke-width="3"/><path d="M104 0V-20" stroke="#16233a" stroke-width="3"/><circle cx="104" cy="-26" r="8" fill="#f3d34c" stroke="#16233a" stroke-width="3"/><circle cx="65" cy="65" r="12" fill="#2747d8"/><circle cx="142" cy="65" r="12" fill="#2747d8"/><path d="M77 108Q104 126 131 108" fill="none" stroke="#2747d8" stroke-width="5"/><text x="104" y="240" font-size="23" text-anchor="middle" font-weight="700">正在学习</text></g>
+<circle cx="480" cy="320" r="12" fill="#f3d34c" stroke="#16233a" stroke-width="3"/><path d="M480 293V218" stroke="#16233a" stroke-width="3" marker-end="url(#arrow)"/><text x="480" y="370" text-anchor="middle" font-size="22" font-weight="700">第 2,000 步</text>
+<g transform="translate(389 70)"><path d="M0 0H148L182 34V146H0Z" fill="#f3d34c" stroke="#16233a" stroke-width="3"/><path d="M35 0V58H135V0M35 146V94H148V146" fill="#fafbfc" stroke="#16233a" stroke-width="3"/><rect x="107" y="15" width="14" height="29" fill="#2747d8"/><text x="91" y="124" text-anchor="middle" font-size="16" font-weight="800">模型存档</text></g>
+<g transform="translate(680 129)"><rect width="196" height="130" rx="24" fill="#fafbfc" stroke="#16233a" stroke-width="3"/><text x="98" y="58" text-anchor="middle" font-size="25" font-weight="800">继续学习</text><text x="98" y="94" text-anchor="middle" font-size="18" fill="#59677d">参数还会改变</text></g>
+<rect x="260" y="426" width="480" height="58" rx="29" fill="#16233a"/><text x="500" y="463" fill="#fff" style="fill:#fff" text-anchor="middle" font-size="22">存档留下的，是那一刻的版本。</text>
+</svg></div>
+<p class="note">训练一步：模型看一批例子，再微调内部的数字。图中的步数仅作示意。</p>
+</section>
+<section>
+<p class="eyebrow">01 / 打开存档</p><h2>最核心的，是<span class="mark">学到的参数</span>。</h2>
+<p class="lead">参数（也叫权重）是一大堆数字，决定模型怎样回答。</p>
+<div class="duo">
+<article class="box"><svg viewBox="0 0 480 290" role="img" aria-label="模型权重是由许多数字组成的快照"><rect x="52" y="35" width="376" height="215" rx="18" fill="#dfe5ff"/><g stroke="#2747d8" stroke-width="2" opacity=".45"><path d="M105 91L231 67L371 96M105 91L230 145L371 96M105 197L230 145L371 203M105 91L230 219L371 96M105 197L231 67L371 203M105 197L230 219L371 203"/></g><g fill="#2747d8" stroke="#fff" stroke-width="4"><circle cx="105" cy="91" r="15"/><circle cx="105" cy="197" r="15"/><circle cx="231" cy="67" r="15"/><circle cx="230" cy="145" r="15"/><circle cx="230" cy="219" r="15"/><circle cx="371" cy="96" r="15"/><circle cx="371" cy="203" r="15"/></g><rect x="151" y="109" width="177" height="64" rx="9" fill="#fff" stroke="#16233a" stroke-width="2"/><text x="240" y="148" text-anchor="middle" font-size="24" font-family="monospace">0.12 −0.87 …</text></svg><div class="box-body"><p class="tag">模型权重</p><h3>“我已经学到了什么”</h3><p>保存这一刻的能力。<br>不是原封不动地打包训练文章。</p></div></article>
+<article class="box"><svg viewBox="0 0 480 290" role="img" aria-label="完整训练存档还包含优化器、训练进度和随机数等状态"><rect x="52" y="35" width="376" height="215" rx="18" fill="#f9edb5"/><g fill="#fafbfc" stroke="#16233a" stroke-width="2"><rect x="90" y="68" width="300" height="48" rx="8"/><rect x="90" y="127" width="300" height="48" rx="8"/><rect x="90" y="186" width="300" height="40" rx="8"/></g><g font-size="19"><text x="110" y="99">优化器状态</text><text x="110" y="158">训练进度 · 学习率调度</text><text x="110" y="213">随机数等状态</text></g><g fill="#2747d8"><circle cx="365" cy="92" r="6"/><circle cx="365" cy="151" r="6"/><circle cx="365" cy="206" r="6"/></g></svg><div class="box-body"><p class="tag">续训需要的额外状态</p><h3>“接下来该怎样学”</h3><p>优化器像调参数的教练；<br>它也有需要保存的工作笔记。</p></div></article>
+</div>
+<p class="note">名字都叫 checkpoint，内容却不一定相同：有的只存权重，完整续训存档还会保存训练状态。加载使用还需匹配的模型结构、配置和分词器。</p>
+</section>
+<section>
+<p class="eyebrow">02 / 试着恢复一次</p><h2>断电了？<br>从<span class="mark">上次存档</span>接着学。</h2>
+<p class="lead">第 2,000 步存过档，第 2,400 步突然中断。</p>
+<div class="art"><div class="wide"><svg viewBox="0 0 1000 370" role="img" aria-labelledby="resume-title"><title id="resume-title">训练在第 2400 步中断。有完整存档可从第 2000 步恢复，后面未保存的 400 步需要重做。</title><text x="50" y="46" font-size="13" letter-spacing="2">训练进度</text><path d="M90 165H865" stroke="#dce1eb" stroke-width="15" stroke-linecap="round"/><path id="progress" d="M90 165H590" stroke="#2747d8" stroke-width="15" stroke-linecap="round"/><path d="M590 165H800" stroke="#f48fa9" stroke-width="15" stroke-dasharray="8 10"/>
+<g stroke="#16233a" stroke-width="3"><circle cx="90" cy="165" r="12" fill="#fafbfc"/><circle cx="590" cy="165" r="16" fill="#f3d34c"/><circle cx="800" cy="165" r="16" fill="#f48fa9"/></g><g font-size="20" text-anchor="middle"><text x="90" y="218">0 步</text><text x="590" y="218">2,000 步</text><text x="800" y="218">2,400 步</text></g><rect x="513" y="69" width="154" height="44" rx="8" fill="#f3d34c"/><text x="590" y="98" font-size="18" text-anchor="middle" font-weight="700">已保存</text><text x="800" y="99" font-size="20" text-anchor="middle" font-weight="700">突然中断 ×</text>
+<g id="return-path"><path d="M799 248Q710 326 598 253" fill="none" stroke="#2747d8" stroke-width="3" marker-end="url(#arrow)"/><text x="705" y="331" font-size="19" text-anchor="middle">这 400 步要重做</text></g><g id="restart-path" visibility="hidden"><path d="M799 248Q450 355 98 248" fill="none" stroke="#2747d8" stroke-width="3" marker-end="url(#arrow)"/><text x="440" y="334" font-size="19" text-anchor="middle">本次训练只能从起点重来</text></g></svg></div>
+<div class="controls" role="group" aria-label="比较恢复方式"><button type="button" aria-pressed="true" data-mode="full">有完整存档</button><button type="button" aria-pressed="false" data-mode="weights">只存了权重</button><button type="button" aria-pressed="false" data-mode="none">完全没存档</button></div><p class="status" id="status" aria-live="polite">加载第 2,000 步的权重和训练状态，接着训练。</p></div>
+<p class="note">横图可在小屏左右滑动。恢复不等于保证后续结果逐位相同；还取决于数据顺序、运行环境等。</p>
+</section>
+<section>
+<p class="eyebrow">03 / 存下来做什么</p><h2>一个存档，<span class="mark">几种去向</span>。</h2>
+<div class="art"><div class="wide"><svg viewBox="0 0 1000 460" role="img" aria-label="checkpoint 可用于继续训练、评估比较版本、加载权重用于对话，但不是聊天记录"><rect x="57" y="151" width="255" height="148" rx="20" fill="#f3d34c" stroke="#16233a" stroke-width="3"/><text x="184" y="219" text-anchor="middle" font-size="27" font-weight="800">模型存档</text><text x="184" y="257" text-anchor="middle" font-size="19">某一刻的模型状态</text><g stroke="#16233a" stroke-width="3" fill="none" marker-end="url(#arrow)"><path d="M312 225H407V89H514"/><path d="M407 225H514"/><path d="M407 225V364H514"/></g><g stroke="#16233a" stroke-width="2"><rect x="536" y="39" width="405" height="100" rx="15" fill="#dfe5ff"/><rect x="536" y="177" width="405" height="100" rx="15" fill="#fafbfc"/><rect x="536" y="314" width="405" height="100" rx="15" fill="#f8dce5"/></g><g font-size="26" font-weight="750"><text x="565" y="82">继续训练 →</text><text x="565" y="220">评估、挑版本 ✓</text><text x="565" y="357">加载模型，回答问题</text></g><g font-size="17"><text x="565" y="114">完整训练状态更适合接着跑</text><text x="565" y="252">更晚的存档，不一定更适合你的任务</text><text x="565" y="389">推理通常不需要优化器状态</text></g></svg></div></div>
+<div class="legend"><span><i class="dot"></i>存的是模型状态</span><span><i class="dot pink"></i>不是你这次的聊天记录</span></div>
+</section>
+<div class="end"><p>训练是学习。<br>Checkpoint 是<span class="mark">保存学习进度</span>。</p></div>
+</main>
+<footer><a href="index.html?lang=zh-CN">← 返回图解目录</a><span>概念图示 · 非真实训练数据</span></footer>
+<script>
+const descriptions={full:'加载第 2,000 步的权重和训练状态，接着训练。',weights:'能从第 2,000 步的能力继续学；但教练的笔记丢了，不是完整接续。',none:'没有保存本次进度：回到本次训练的起点（可能是已有的预训练模型）。'};
+for(const button of document.querySelectorAll('[data-mode]')){button.addEventListener('click',()=>{const mode=button.dataset.mode;for(const peer of document.querySelectorAll('[data-mode]'))peer.setAttribute('aria-pressed',String(peer===button));document.querySelector('#status').textContent=descriptions[mode];document.querySelector('#return-path').setAttribute('visibility',mode==='none'?'hidden':'visible');document.querySelector('#restart-path').setAttribute('visibility',mode==='none'?'visible':'hidden');document.querySelector('#progress').setAttribute('opacity',mode==='none'?'.16':'1');});}
+</script>
+</body>
+</html>

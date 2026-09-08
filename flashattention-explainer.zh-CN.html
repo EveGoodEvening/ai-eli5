@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FlashAttention · 少跑腿</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@700;900&family=IBM+Plex+Mono:wght@400;600&family=Noto+Sans+SC:wght@400;700;900&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#DCE2E7;
+    --paper-2:#CFD7DE;
+    --ink:#0E1A22;
+    --slab:#132430;
+    --slab-2:#1D3444;
+    --steel:#6C8CA8;
+    --steel-dim:#41607A;
+    --hot:#FF5A1F;
+    --signal:#FFC400;
+    --mute:#7D8D99;
+    --disp:"Archivo","Noto Sans SC","PingFang SC","Microsoft YaHei",sans-serif;
+    --body:"Noto Sans SC","PingFang SC","Microsoft YaHei",sans-serif;
+    --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    margin:0;background:var(--paper);color:var(--ink);
+    font-family:var(--body);line-height:1.6;
+    background-image:linear-gradient(var(--paper-2) 1px,transparent 1px),linear-gradient(90deg,var(--paper-2) 1px,transparent 1px);
+    background-size:44px 44px;
+  }
+  .wrap{max-width:1040px;margin:0 auto;padding:0 20px}
+
+  /* ---------- hero ---------- */
+  .hero{padding:72px 0 40px}
+  .eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.22em;text-transform:uppercase;color:var(--steel-dim)}
+  h1{
+    font-family:var(--disp);font-weight:900;
+    font-size:clamp(42px,10.3vw,112px);line-height:.9;letter-spacing:-.03em;
+    margin:14px 0 0;
+  }
+  h1 em{font-style:normal;color:var(--hot)}
+  .deck{font-size:clamp(19px,3.6vw,30px);font-weight:700;max-width:20ch;margin:22px 0 0;line-height:1.35}
+  .deck span{background:var(--signal);padding:0 .18em;box-decoration-break:clone;-webkit-box-decoration-break:clone}
+
+  /* ---------- signature: the trip counter ---------- */
+  .rig{background:var(--slab);border-radius:20px;padding:26px 22px 22px;margin:46px 0 0;color:#E7EEF3;overflow:hidden}
+  .rig-cap{font-family:var(--mono);font-size:12px;letter-spacing:.14em;color:var(--steel);text-transform:uppercase}
+  .lane{display:grid;grid-template-columns:1fr;gap:10px;padding:22px 0;border-bottom:1px solid rgba(255,255,255,.09)}
+  .lane:last-of-type{border-bottom:0;padding-bottom:4px}
+  .lane-name{font-weight:900;font-size:17px}
+  .lane-name b{font-family:var(--mono);font-weight:600;font-size:12px;color:var(--steel);display:block;letter-spacing:.1em}
+  .track{display:flex;align-items:center;gap:12px}
+  .box{flex:0 0 auto;border-radius:9px;padding:9px 11px;font-family:var(--mono);font-size:11px;line-height:1.35;text-align:center;font-weight:600}
+  .box.hbm{background:var(--steel-dim);color:#EAF2F8;min-width:78px}
+  .box.sram{background:var(--hot);color:#160B04;min-width:78px}
+  .wire{position:relative;flex:1 1 auto;height:34px;border-top:2px dashed rgba(255,255,255,.2);border-bottom:2px dashed rgba(255,255,255,.2)}
+  .pk{position:absolute;top:50%;left:0;width:16px;height:16px;margin-top:-8px;border-radius:3px;background:var(--signal)}
+  .anim .pk{animation:shuttle 2.6s ease-in-out infinite alternate}
+  @keyframes shuttle{from{left:0}to{left:calc(100% - 16px)}}
+  .tally{font-family:var(--disp);font-weight:900;font-size:clamp(38px,9vw,62px);line-height:1;letter-spacing:-.03em}
+  .tally.bad{color:var(--signal)}
+  .tally.good{color:#5BE0A8}
+  .tally small{font-family:var(--body);font-size:14px;font-weight:700;letter-spacing:0;margin-left:6px;color:#9FB3C0}
+  @media(min-width:760px){
+    .lane{grid-template-columns:200px 1fr 170px;align-items:center;gap:22px}
+    .tally{text-align:right}
+  }
+
+  /* ---------- scenes ---------- */
+  .scene{padding:74px 0 10px}
+  .tag{font-family:var(--mono);font-size:12px;font-weight:600;letter-spacing:.18em;color:#fff;background:var(--slab-2);padding:5px 10px;border-radius:4px}
+  .scene h2{font-family:var(--disp);font-weight:900;font-size:clamp(28px,6.2vw,56px);line-height:1.08;letter-spacing:-.02em;margin:16px 0 0;max-width:16ch}
+  .stage{margin:30px 0 0;background:var(--slab);border-radius:20px;padding:18px}
+  .stage svg{display:block;width:100%;height:auto}
+  .note{font-size:clamp(16px,3vw,21px);font-weight:700;margin:18px 0 0;max-width:26ch}
+  .note u{text-decoration:none;border-bottom:5px solid var(--hot)}
+
+  /* svg type */
+  .s-h{font-family:var(--disp);font-weight:900;fill:#EAF2F8}
+  .s-m{font-family:var(--mono);font-weight:600;fill:var(--steel)}
+  .s-b{font-family:var(--body);font-weight:700;fill:#EAF2F8}
+
+  /* ---------- results ---------- */
+  .cards{display:grid;grid-template-columns:1fr;gap:12px;margin:30px 0 0}
+  @media(min-width:720px){.cards{grid-template-columns:repeat(3,1fr)}}
+  .card{background:var(--slab);color:#E7EEF3;border-radius:18px;padding:26px 22px}
+  .card i{font-style:normal;font-family:var(--mono);font-size:11px;letter-spacing:.16em;color:var(--steel);display:block}
+  .card b{display:block;font-family:var(--disp);font-weight:900;font-size:clamp(34px,7vw,48px);line-height:1;margin:12px 0 8px;letter-spacing:-.02em;color:var(--signal)}
+  .card p{margin:0;font-size:15px;color:#AFC1CD}
+
+  .kicker{padding:66px 0 96px}
+  .kicker p{font-family:var(--disp);font-weight:900;font-size:clamp(26px,5.4vw,48px);line-height:1.15;letter-spacing:-.02em;margin:0;max-width:18ch}
+  .kicker p mark{background:none;color:var(--hot)}
+  .foot{font-family:var(--mono);font-size:12px;color:var(--steel-dim);border-top:2px solid var(--steel);padding:16px 0 0;margin:40px 0 0}
+
+  /* reveal */
+  .rv{opacity:0;transform:translateY(26px);transition:opacity .7s ease,transform .7s cubic-bezier(.2,.7,.3,1)}
+  .rv.in{opacity:1;transform:none}
+  @media (prefers-reduced-motion:reduce){
+    .rv{opacity:1;transform:none;transition:none}
+    .anim .pk{animation:none}
+    .pk:nth-child(even){left:calc(100% - 16px)}
+  }
+  .kicker p.foot{font-size:12px;line-height:1.65;max-width:none;font-weight:400}
+</style>
+<!-- eli5:head:start -->
+<link rel="alternate" hreflang="en" href="flashattention-explainer.en.html">
+<link rel="alternate" hreflang="zh-CN" href="flashattention-explainer.zh-CN.html">
+<link rel="stylesheet" href="language.css">
+<script src="language.js" defer></script>
+<!-- eli5:head:end -->
+</head>
+<body>
+<!-- eli5:nav:start -->
+<div class="eli5-site-nav" role="navigation" aria-label="图解导航与语言选择">
+  <a class="eli5-nav-home" href="index.html?lang=zh-CN">← 图解目录</a>
+  <div class="eli5-languages">
+    <a href="flashattention-explainer.zh-CN.html" data-language="zh-CN" lang="zh-CN" hreflang="zh-CN" aria-current="page">简体中文</a>
+    <a href="flashattention-explainer.en.html" data-language="en" lang="en" hreflang="en">English</a>
+  </div>
+</div>
+<!-- eli5:nav:end -->
+
+<div class="wrap">
+
+  <!-- HERO -->
+  <header class="hero">
+    <p class="eyebrow">GPU 内存 · 大模型提速</p>
+    <h1>Flash<em>Attention</em></h1>
+    <p class="deck">它没让计算变快，<br><span>只让数据少跑腿。</span></p>
+
+    <div class="rig rv">
+      <p class="rig-cap">那张 N×N 大表，在两块内存之间来回搬了几趟？</p>
+
+      <div class="lane">
+        <div class="lane-name">标准注意力<b>标准方式</b></div>
+        <div class="track">
+          <div class="box hbm">HBM<br>大仓库</div>
+          <div class="wire anim" id="w1">
+            <span class="pk" style="animation-delay:0s"></span>
+            <span class="pk" style="animation-delay:-.65s"></span>
+            <span class="pk" style="animation-delay:-1.3s"></span>
+            <span class="pk" style="animation-delay:-1.95s"></span>
+          </div>
+          <div class="box sram">SRAM<br>小桌子</div>
+        </div>
+        <div class="tally bad"><span id="n1">0</span><small>趟</small></div>
+      </div>
+
+      <div class="lane">
+        <div class="lane-name">FlashAttention<b>融合计算 · 分块处理</b></div>
+        <div class="track">
+          <div class="box hbm">HBM<br>大仓库</div>
+          <div class="wire"></div>
+          <div class="box sram">SRAM<br>小桌子</div>
+        </div>
+        <div class="tally good">0<small>趟</small></div>
+      </div>
+    </div>
+  </header>
+
+  <!-- 01 -->
+  <section class="scene rv">
+    <span class="tag">问题</span>
+    <h2>每个字，都要看一遍所有字</h2>
+    <div class="stage">
+      <svg viewBox="0 0 900 430" role="img" aria-label="左边一个字连向右边所有的字">
+        <text class="s-m" x="60" y="34" font-size="15">这个字…</text>
+        <text class="s-m" x="640" y="34" font-size="15">…要看所有字</text>
+        <g>
+          <rect x="60" y="60" width="180" height="52" rx="9" fill="#233B4C"/><text class="s-b" x="150" y="93" font-size="21" text-anchor="middle">猫</text>
+          <rect x="60" y="132" width="180" height="52" rx="9" fill="#233B4C"/><text class="s-b" x="150" y="165" font-size="21" text-anchor="middle">坐</text>
+          <rect x="60" y="204" width="180" height="52" rx="9" fill="#FF5A1F"/><text x="150" y="237" font-size="21" text-anchor="middle" font-weight="900" fill="#160B04" font-family="Noto Sans SC,PingFang SC,sans-serif">在</text>
+          <rect x="60" y="276" width="180" height="52" rx="9" fill="#233B4C"/><text class="s-b" x="150" y="309" font-size="21" text-anchor="middle">垫</text>
+          <rect x="60" y="348" width="180" height="52" rx="9" fill="#233B4C"/><text class="s-b" x="150" y="381" font-size="21" text-anchor="middle">上</text>
+        </g>
+        <g stroke="#FF5A1F" stroke-width="3" fill="none" opacity=".85">
+          <path d="M240 230 C 420 230, 480 86, 660 86"/>
+          <path d="M240 230 C 420 230, 480 158, 660 158"/>
+          <path d="M240 230 C 430 230, 470 230, 660 230"/>
+          <path d="M240 230 C 420 230, 480 302, 660 302"/>
+          <path d="M240 230 C 420 230, 480 374, 660 374"/>
+        </g>
+        <g>
+          <rect x="660" y="60" width="180" height="52" rx="9" fill="#233B4C"/><text class="s-b" x="750" y="93" font-size="21" text-anchor="middle">猫</text>
+          <rect x="660" y="132" width="180" height="52" rx="9" fill="#233B4C"/><text class="s-b" x="750" y="165" font-size="21" text-anchor="middle">坐</text>
+          <rect x="660" y="204" width="180" height="52" rx="9" fill="#233B4C"/><text class="s-b" x="750" y="237" font-size="21" text-anchor="middle">在</text>
+          <rect x="660" y="276" width="180" height="52" rx="9" fill="#233B4C"/><text class="s-b" x="750" y="309" font-size="21" text-anchor="middle">垫</text>
+          <rect x="660" y="348" width="180" height="52" rx="9" fill="#233B4C"/><text class="s-b" x="750" y="381" font-size="21" text-anchor="middle">上</text>
+        </g>
+      </svg>
+    </div>
+    <p class="note">5 个字，就要算 <u>25 次</u>。</p>
+  </section>
+
+  <!-- 02 -->
+  <section class="scene rv">
+    <span class="tag">放大</span>
+    <h2>字多一点，表大很多</h2>
+    <div class="stage">
+      <svg viewBox="0 0 900 400" role="img" aria-label="三个方格表，随字数增加面积暴涨">
+        <g fill="none" stroke="#6C8CA8" stroke-width="2">
+          <rect x="50" y="286" width="60" height="60" rx="4" fill="#233B4C"/>
+        </g>
+        <text class="s-m" x="80" y="372" font-size="13" text-anchor="middle">512 字</text>
+        <text class="s-h" x="80" y="270" font-size="18" text-anchor="middle">26 万</text>
+
+        <g>
+          <rect x="180" y="186" width="160" height="160" rx="6" fill="#233B4C" stroke="#6C8CA8" stroke-width="2"/>
+        </g>
+        <text class="s-m" x="260" y="372" font-size="13" text-anchor="middle">4 千字</text>
+        <text class="s-h" x="260" y="170" font-size="22" text-anchor="middle">1678 万</text>
+
+        <g>
+          <rect x="420" y="26" width="320" height="320" rx="8" fill="#FF5A1F" opacity=".92"/>
+          <g stroke="#160B04" stroke-width="1.5" opacity=".28">
+            <path d="M420 106H740M420 186H740M420 266H740M500 26V346M580 26V346M660 26V346"/>
+          </g>
+        </g>
+        <text class="s-m" x="580" y="372" font-size="13" text-anchor="middle">3 万 2 千字</text>
+        <text x="580" y="14" font-size="26" text-anchor="middle" font-family="Archivo,sans-serif" font-weight="900" fill="#FFC400">10.7 亿</text>
+        <text class="s-m" x="770" y="196" font-size="14">格 · 每格都要算</text>
+      </svg>
+    </div>
+    <p class="note">字数 ×10，表格 <u>×100</u>。</p>
+  </section>
+
+  <!-- 03 -->
+  <section class="scene rv">
+    <span class="tag">硬件</span>
+    <h2>显卡里有两种内存</h2>
+    <div class="stage">
+      <svg viewBox="0 0 900 400" role="img" aria-label="小而快的 SRAM 与大而慢的 HBM 对比">
+        <rect x="60" y="150" width="72" height="72" rx="8" fill="#FF5A1F"/>
+        <text x="96" y="196" font-size="15" text-anchor="middle" font-family="IBM Plex Mono,monospace" font-weight="600" fill="#160B04">SRAM</text>
+        <text class="s-h" x="60" y="118" font-size="26">小桌子</text>
+        <text class="s-m" x="60" y="262" font-size="14">20 MB</text>
+        <text class="s-m" x="60" y="284" font-size="14">19 TB/s</text>
+        <text x="60" y="316" font-size="19" font-family="Archivo,sans-serif" font-weight="900" fill="#FFC400">很快</text>
+
+        <text class="s-m" x="200" y="196" font-size="14">同一块显卡</text>
+
+        <rect x="400" y="70" width="440" height="260" rx="12" fill="#41607A"/>
+        <g stroke="#6C8CA8" stroke-width="2" opacity=".6">
+          <path d="M400 135H840M400 200H840M400 265H840"/>
+        </g>
+        <text x="620" y="212" font-size="17" text-anchor="middle" font-family="IBM Plex Mono,monospace" font-weight="600" fill="#EAF2F8">HBM</text>
+        <text class="s-h" x="400" y="46" font-size="26">大仓库</text>
+        <text class="s-m" x="400" y="360" font-size="14">40 GB · 大 2000 倍</text>
+        <text x="400" y="390" font-size="19" font-family="Archivo,sans-serif" font-weight="900" fill="#FF5A1F">慢 10 倍</text>
+      </svg>
+    </div>
+    <p class="note">桌子放不下那张大表。</p>
+  </section>
+
+  <!-- 04 -->
+  <section class="scene rv">
+    <span class="tag">病根</span>
+    <h2>慢的不是算，是搬</h2>
+    <div class="stage">
+      <svg viewBox="0 0 900 420" role="img" aria-label="大表在桌子和仓库之间来回搬运四次">
+        <rect x="40" y="150" width="150" height="120" rx="10" fill="#FF5A1F"/>
+        <text x="115" y="216" font-size="14" text-anchor="middle" font-family="IBM Plex Mono,monospace" font-weight="600" fill="#160B04">SRAM</text>
+        <rect x="710" y="90" width="150" height="240" rx="10" fill="#41607A"/>
+        <text x="785" y="216" font-size="14" text-anchor="middle" font-family="IBM Plex Mono,monospace" font-weight="600" fill="#EAF2F8">HBM</text>
+
+        <defs>
+          <marker id="ar" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto">
+            <path d="M0 0 L9 4.5 L0 9 z" fill="#FFC400"/>
+          </marker>
+        </defs>
+        <g stroke="#FFC400" stroke-width="5" marker-end="url(#ar)" fill="none">
+          <path d="M210 110 H690"/>
+          <path d="M690 190 H210"/>
+          <path d="M210 270 H690"/>
+          <path d="M690 350 H210"/>
+        </g>
+        <text class="s-b" x="230" y="96" font-size="17">写下大表</text>
+        <text class="s-b" x="230" y="176" font-size="17">读回来 · softmax</text>
+        <text class="s-b" x="230" y="256" font-size="17">再写回去</text>
+        <text class="s-b" x="230" y="336" font-size="17">再读一次 · 乘 V</text>
+        <text class="s-m" x="40" y="404" font-size="14">大表太大，只能一趟趟搬 —— 时间全花在路上</text>
+      </svg>
+    </div>
+    <p class="note">算得快，<u>搬得慢</u>。</p>
+  </section>
+
+  <!-- 05 -->
+  <section class="scene rv">
+    <span class="tag">解法</span>
+    <h2>切成小块，在桌上一次做完</h2>
+    <div class="stage">
+      <svg viewBox="0 0 900 420" role="img" aria-label="大表被切成小块，一次一块搬到 SRAM 上算完并累加">
+        <text class="s-m" x="40" y="34" font-size="14">把大表切块</text>
+        <g>
+          <rect x="40" y="60" width="230" height="230" rx="8" fill="#233B4C" stroke="#6C8CA8" stroke-width="2"/>
+          <g stroke="#6C8CA8" stroke-width="2"><path d="M40 137H270M40 214H270M117 60V290M194 60V290"/></g>
+          <rect x="42" y="62" width="73" height="73" rx="5" fill="#FF5A1F"/>
+        </g>
+        <text class="s-m" x="40" y="318" font-size="14">一次只拿一小块</text>
+
+        <path d="M300 170 H420" stroke="#FFC400" stroke-width="5" marker-end="url(#ar)" fill="none"/>
+
+        <rect x="440" y="60" width="230" height="230" rx="10" fill="#FF5A1F"/>
+        <text x="555" y="96" font-size="14" text-anchor="middle" font-family="IBM Plex Mono,monospace" font-weight="600" fill="#160B04">SRAM</text>
+        <g font-family="Noto Sans SC,PingFang SC,sans-serif" font-weight="700" fill="#160B04" font-size="19" text-anchor="middle">
+          <text x="555" y="150">乘 K</text>
+          <text x="555" y="192">softmax</text>
+          <text x="555" y="234">乘 V</text>
+        </g>
+        <text x="555" y="272" font-size="13" text-anchor="middle" font-family="IBM Plex Mono,monospace" font-weight="600" fill="#160B04">一口气做完 · 边做边累加</text>
+        <text class="s-m" x="440" y="318" font-size="14">中间结果不落地</text>
+
+        <rect x="700" y="60" width="160" height="230" rx="10" fill="#41607A" opacity=".55"/>
+        <text x="780" y="180" font-size="14" text-anchor="middle" font-family="IBM Plex Mono,monospace" font-weight="600" fill="#EAF2F8">HBM</text>
+        <g stroke="#FF5A1F" stroke-width="7" stroke-linecap="round">
+          <path d="M718 78 L842 272"/><path d="M842 78 L718 272"/>
+        </g>
+        <text x="700" y="318" font-size="15" font-family="Noto Sans SC,PingFang SC,sans-serif" font-weight="900" fill="#FFC400">大表从不写下</text>
+
+        <text class="s-m" x="40" y="392" font-size="15">小块进 → 算完 → 结果加进总账 → 换下一块</text>
+      </svg>
+    </div>
+    <p class="note">大表<u>从没存在过</u>，只在桌上闪了一下。</p>
+  </section>
+
+  <!-- RESULT -->
+  <section class="scene rv">
+    <span class="tag">结果</span>
+    <h2>同一个答案，换条路走</h2>
+    <div class="cards">
+      <div class="card"><i>准确度</i><b>数学等价</b><p>不是注意力近似；浮点舍入可能导致细微数值差异。</p></div>
+      <div class="card"><i>速度</i><b>约 3 倍</b><p>训练更快，注意力本身提速更多。</p></div>
+      <div class="card"><i>显存</i><b>N² → N</b><p>显存不再随字数平方暴涨。</p></div>
+    </div>
+    <p class="note">所以模型能读<u>长得多</u>的文章。</p>
+  </section>
+
+  <section class="kicker rv">
+    <p>它没有改变数学，<br>只改变了<mark>数据走的路</mark>。</p>
+    <p class="foot">FlashAttention · Dao et al., 2022 · 数值以 NVIDIA A100 为例</p>
+  </section>
+
+</div>
+
+<script>
+(function(){
+  var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // reveal on scroll
+  var els = document.querySelectorAll('.rv');
+  if (!('IntersectionObserver' in window) || reduce){
+    els.forEach(function(e){ e.classList.add('in'); });
+  } else {
+    var io = new IntersectionObserver(function(entries){
+      entries.forEach(function(en){
+        if(en.isIntersecting){ en.target.classList.add('in'); io.unobserve(en.target); }
+      });
+    },{threshold:.15});
+    els.forEach(function(e){ io.observe(e); });
+  }
+
+  // count up the "trips" tally
+  var out = document.getElementById('n1');
+  if(!out) return;
+  if(reduce){ out.textContent = '8'; return; }
+  var n = 0;
+  var t = setInterval(function(){
+    n++; out.textContent = n;
+    if(n >= 8) clearInterval(t);
+  }, 190);
+})();
+</script>
+</body>
+</html>

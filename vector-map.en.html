@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Embeddings: A Map of Meaning</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@700;900&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#EDEFE6;
+    --paper-2:#E3E8DC;
+    --ink:#1B3B36;
+    --ink-soft:#4B6660;
+    --line:#B9C7B4;
+    --pin:#C33C54;
+    --sea:#3E7C8C;
+    --sun:#D9A227;
+    --serif:"Noto Serif SC","Songti SC","Source Han Serif SC","SimSun",serif;
+    --sans:"PingFang SC","Hiragino Sans GB","Microsoft YaHei",system-ui,-apple-system,sans-serif;
+    --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    margin:0;
+    background-color:var(--paper);
+    background-image:
+      linear-gradient(rgba(27,59,54,.045) 1px,transparent 1px),
+      linear-gradient(90deg,rgba(27,59,54,.045) 1px,transparent 1px);
+    background-size:44px 44px;
+    color:var(--ink);
+    font-family:var(--sans);
+    line-height:1.7;
+  }
+  .wrap{max-width:1040px;margin:0 auto;padding:0 24px}
+
+  /* ---------- hero ---------- */
+  .hero{padding:clamp(56px,12vw,120px) 0 clamp(40px,8vw,80px)}
+  .hero__tag{
+    font-family:var(--mono);font-size:12px;letter-spacing:.22em;
+    color:var(--ink-soft);text-transform:uppercase;margin:0 0 22px;
+    display:flex;align-items:center;gap:12px;
+  }
+  .hero__tag::after{content:"";flex:1;height:1px;background:var(--line)}
+  .hero__title{
+    font-family:var(--serif);font-weight:900;
+    font-size:clamp(38px,9vw,86px);line-height:1.12;letter-spacing:.01em;
+    margin:0 0 18px;
+  }
+  .hero__title em{font-style:normal;color:var(--pin)}
+  .hero__sub{font-size:clamp(15px,2.6vw,19px);color:var(--ink-soft);margin:0;max-width:34em}
+
+  /* ---------- transform strip ---------- */
+  .strip{
+    margin-top:clamp(36px,7vw,64px);
+    display:flex;align-items:center;gap:clamp(14px,3vw,28px);flex-wrap:wrap;
+  }
+  .glyph{
+    width:clamp(92px,20vw,132px);height:clamp(92px,20vw,132px);
+    border:2px solid var(--ink);border-radius:4px;background:#fff;
+    display:flex;align-items:center;justify-content:center;
+    font-family:var(--serif);font-weight:700;
+    font-size:clamp(34px,7vw,48px);flex:none;
+    box-shadow:6px 6px 0 rgba(27,59,54,.12);
+  }
+  .arrow{flex:none;color:var(--ink-soft)}
+  .nums{display:flex;gap:8px;flex-wrap:wrap;flex:1;min-width:220px}
+  .num{
+    font-family:var(--mono);font-size:clamp(12px,2.4vw,15px);
+    padding:8px 10px;border:1px solid var(--line);border-radius:3px;
+    background:rgba(255,255,255,.6);color:var(--sea);
+  }
+  .num--dots{border-style:dashed;color:var(--ink-soft)}
+
+  /* ---------- plates ---------- */
+  .plate{padding:clamp(52px,10vw,110px) 0;border-top:1px solid var(--line)}
+  .plate__eyebrow{
+    font-family:var(--mono);font-size:12px;letter-spacing:.2em;
+    color:var(--pin);margin:0 0 14px;
+  }
+  .plate__title{
+    font-family:var(--serif);font-weight:700;
+    font-size:clamp(27px,6vw,48px);line-height:1.25;margin:0 0 12px;
+  }
+  .plate__note{color:var(--ink-soft);margin:0;font-size:clamp(14px,2.4vw,17px)}
+  .figure{margin:clamp(28px,6vw,48px) 0 0}
+  .figure svg{width:100%;height:auto;display:block}
+
+  /* ---------- map ---------- */
+  .map-shell{
+    background:#F5F6EF;border:2px solid var(--ink);border-radius:6px;
+    padding:10px;box-shadow:8px 8px 0 rgba(27,59,54,.1);
+  }
+  .legend{
+    display:flex;justify-content:space-between;align-items:center;gap:16px;
+    margin-top:14px;flex-wrap:wrap;
+    font-family:var(--mono);font-size:12px;color:var(--ink-soft);letter-spacing:.06em;
+  }
+  .legend b{color:var(--pin);font-weight:500}
+  .pin-hit{cursor:pointer}
+  .pin-hit:focus{outline:none}
+  .pin-hit:focus-visible .pin-ring{opacity:1}
+  .pin-label{font-family:var(--serif);font-weight:700;font-size:17px;fill:var(--ink)}
+  .pin-dot{fill:#F5F6EF;stroke:var(--ink);stroke-width:2}
+  .pin-hit[data-on="1"] .pin-dot{fill:var(--pin);stroke:var(--pin)}
+  .pin-hit[data-on="1"] .pin-label{fill:var(--pin)}
+  .pin-hit[data-near="1"] .pin-dot{fill:var(--sun);stroke:var(--ink)}
+  .pin-ring{fill:none;stroke:var(--pin);stroke-width:2;opacity:0}
+
+  /* ---------- uses ---------- */
+  .uses{display:grid;grid-template-columns:repeat(3,1fr);gap:clamp(12px,3vw,26px);margin-top:clamp(28px,6vw,44px)}
+  .use{
+    background:#fff;border:1px solid var(--line);border-radius:5px;
+    padding:clamp(16px,3vw,26px);text-align:center;
+  }
+  .use svg{width:100%;max-width:110px;height:auto;margin:0 auto 12px;display:block}
+  .use span{font-family:var(--serif);font-weight:700;font-size:clamp(15px,3vw,21px)}
+  @media(max-width:560px){.uses{grid-template-columns:1fr}}
+
+  /* ---------- end ---------- */
+  .end{padding:clamp(60px,12vw,130px) 0;border-top:2px solid var(--ink);text-align:center}
+  .end__line{
+    font-family:var(--serif);font-weight:900;
+    font-size:clamp(24px,5.6vw,44px);line-height:1.4;margin:0;
+  }
+  .end__line em{font-style:normal;background:linear-gradient(transparent 62%,rgba(217,162,39,.55) 62%)}
+  .end__foot{font-family:var(--mono);font-size:12px;color:var(--ink-soft);letter-spacing:.2em;margin-top:26px}
+
+  /* ---------- reveal ---------- */
+  .rise{opacity:0;transform:translateY(22px);transition:opacity .7s ease,transform .7s ease}
+  .rise.on{opacity:1;transform:none}
+  @media(prefers-reduced-motion:reduce){
+    .rise{opacity:1;transform:none;transition:none}
+    *{animation:none!important}
+  }
+
+  :root{--serif:Georgia,"Times New Roman",serif}
+  .figure{overflow-x:auto;padding:0 0 10px}.figure svg{min-width:640px}
+  .hero__title,.plate__title{overflow-wrap:normal}
+</style>
+<!-- eli5:head:start -->
+<link rel="alternate" hreflang="en" href="vector-map.en.html">
+<link rel="alternate" hreflang="zh-CN" href="vector-map.zh-CN.html">
+<link rel="stylesheet" href="language.css">
+<script src="language.js" defer></script>
+<!-- eli5:head:end -->
+</head>
+<body>
+<!-- eli5:nav:start -->
+<div class="eli5-site-nav" role="navigation" aria-label="Guide navigation and language">
+  <a class="eli5-nav-home" href="index.html?lang=en">← All guides</a>
+  <div class="eli5-languages">
+    <a href="vector-map.zh-CN.html" data-language="zh-CN" lang="zh-CN" hreflang="zh-CN">简体中文</a>
+    <a href="vector-map.en.html" data-language="en" lang="en" hreflang="en" aria-current="page">English</a>
+  </div>
+</div>
+<!-- eli5:nav:end -->
+
+<header class="hero wrap">
+  <p class="hero__tag">VECTORIZATION · EMBEDDINGS</p>
+  <h1 class="hero__title">A word<br>becomes <em>a list of numbers</em>.</h1>
+  <p class="hero__sub">Computers cannot work directly with the meaning of “cat,” but they can work with numbers.</p>
+
+  <div class="strip">
+    <div class="glyph">cat</div>
+    <svg class="arrow" width="54" height="24" viewBox="0 0 54 24" aria-hidden="true">
+      <path d="M0 12h44M36 5l8 7-8 7" fill="none" stroke="currentColor" stroke-width="2"/>
+    </svg>
+    <div class="nums" id="nums" aria-label="The vector for cat"></div>
+  </div>
+</header>
+
+<main>
+
+  <section class="plate wrap rise">
+    <p class="plate__eyebrow">01 / Turn it into numbers</p>
+    <h2 class="plate__title">Give each word a set of measurements.</h2>
+    <p class="plate__note">Furry? Vocal? Edible? Think of hundreds of features and numbers. This is an analogy: real embeddings learn their dimensions rather than answering a fixed list of questions.</p>
+    <div class="figure">
+      <svg viewBox="0 0 800 250" role="img" aria-label="A cat is scored on several illustrative features">
+        <g font-family="var(--sans)" font-size="16" fill="#4B6660">
+          <text x="0" y="30">Furry</text><text x="0" y="100">Vocal</text>
+          <text x="0" y="170">Edible</text><text x="0" y="240">Drivable</text>
+        </g>
+        <g>
+          <rect x="110" y="12" width="560" height="24" rx="12" fill="#E3E8DC"/>
+          <rect x="110" y="12" width="520" height="24" rx="12" fill="#3E7C8C"/>
+          <rect x="110" y="82" width="560" height="24" rx="12" fill="#E3E8DC"/>
+          <rect x="110" y="82" width="430" height="24" rx="12" fill="#3E7C8C"/>
+          <rect x="110" y="152" width="560" height="24" rx="12" fill="#E3E8DC"/>
+          <rect x="110" y="152" width="60" height="24" rx="12" fill="#3E7C8C"/>
+          <rect x="110" y="222" width="560" height="24" rx="12" fill="#E3E8DC"/>
+          <rect x="110" y="222" width="14" height="24" rx="7" fill="#3E7C8C"/>
+        </g>
+        <g font-family="var(--mono)" font-size="15" fill="#1B3B36">
+          <text x="690" y="30">0.93</text><text x="690" y="100">0.77</text>
+          <text x="690" y="170">0.11</text><text x="690" y="240">0.02</text>
+        </g>
+      </svg>
+    </div>
+  </section>
+
+  <section class="plate wrap rise">
+    <p class="plate__eyebrow">02 / Turn it into coordinates</p>
+    <h2 class="plate__title">A list of numbers = a location.</h2>
+    <p class="plate__note">Like latitude and longitude, the numbers identify a point in space.</p>
+    <div class="figure">
+      <svg viewBox="0 0 800 320" role="img" aria-label="Numbers identify a point in a coordinate system">
+        <g stroke="#B9C7B4" stroke-width="1">
+          <path d="M120 40v240M120 280h560"/>
+          <g stroke-dasharray="4 6">
+            <path d="M120 120h380M500 280V120"/>
+          </g>
+        </g>
+        <circle cx="500" cy="120" r="13" fill="#C33C54"/>
+        <circle cx="500" cy="120" r="26" fill="none" stroke="#C33C54" stroke-width="2" opacity=".4"/>
+        <text x="530" y="112" font-family="var(--serif)" font-weight="700" font-size="30" fill="#1B3B36">cat</text>
+        <text x="530" y="140" font-family="var(--mono)" font-size="14" fill="#4B6660">(0.93, 0.77, …)</text>
+        <text x="60" y="128" font-family="var(--mono)" font-size="13" fill="#4B6660">0.77</text>
+        <text x="480" y="306" font-family="var(--mono)" font-size="13" fill="#4B6660">0.93</text>
+      </svg>
+    </div>
+  </section>
+
+  <section class="plate wrap rise">
+    <p class="plate__eyebrow">03 / A map of meaning</p>
+    <h2 class="plate__title">Similar meanings sit nearby.</h2>
+    <p class="plate__note">Select a word to see its neighbors. This is an illustrative map.</p>
+    <div class="figure">
+      <div class="map-shell">
+        <svg id="map" viewBox="0 0 800 540" role="img" aria-label="An interactive map of word meanings; select a word to see its nearest neighbors">
+          <defs>
+            <pattern id="hatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+              <line x1="0" y1="0" x2="0" y2="8" stroke="#B9C7B4" stroke-width="1" opacity=".5"/>
+            </pattern>
+          </defs>
+          <g stroke="#B9C7B4" stroke-width="1" opacity=".55">
+            <path d="M0 90h800M0 180h800M0 270h800M0 360h800M0 450h800"/>
+            <path d="M100 0v540M200 0v540M300 0v540M400 0v540M500 0v540M600 0v540M700 0v540"/>
+          </g>
+          <g fill="none" stroke="#3E7C8C" opacity=".55">
+            <ellipse cx="215" cy="185" rx="150" ry="120" stroke-width="1.5"/>
+            <ellipse cx="215" cy="185" rx="112" ry="88" stroke-width="1.5"/>
+            <ellipse cx="215" cy="185" rx="72" ry="56" stroke-width="1.5" fill="url(#hatch)"/>
+            <ellipse cx="600" cy="180" rx="132" ry="105" stroke-width="1.5"/>
+            <ellipse cx="600" cy="180" rx="94" ry="74" stroke-width="1.5"/>
+            <ellipse cx="600" cy="180" rx="56" ry="44" stroke-width="1.5" fill="url(#hatch)"/>
+            <ellipse cx="420" cy="435" rx="145" ry="98" stroke-width="1.5"/>
+            <ellipse cx="420" cy="435" rx="104" ry="70" stroke-width="1.5"/>
+            <ellipse cx="420" cy="435" rx="62" ry="42" stroke-width="1.5" fill="url(#hatch)"/>
+          </g>
+          <g id="links" stroke="#C33C54" stroke-width="2" stroke-dasharray="6 6"></g>
+          <g id="pins"></g>
+        </svg>
+      </div>
+      <div class="legend">
+        <span id="cap">Nearest to <b>cat</b> : dog · tiger</span>
+        <span>— Distance represents a difference in meaning</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="plate wrap rise">
+    <p class="plate__eyebrow">04 / Directions can mean something too</p>
+    <h2 class="plate__title">king − man + woman ≈ queen</h2>
+    <p class="plate__note">Similar directions can express similar relationships. This classic example is an approximation, not a rule for every embedding.</p>
+    <div class="figure">
+      <svg viewBox="0 0 800 340" role="img" aria-label="King to queen and man to woman illustrate the same direction">
+        <defs>
+          <marker id="ah" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto">
+            <path d="M0 0l9 4.5L0 9z" fill="#C33C54"/>
+          </marker>
+        </defs>
+        <g stroke="#C33C54" stroke-width="2.5" marker-end="url(#ah)">
+          <path d="M175 100h370"/>
+          <path d="M175 265h370"/>
+        </g>
+        <g fill="#1B3B36" font-family="var(--serif)" font-weight="700" font-size="34" text-anchor="middle">
+          <text x="105" y="112">king</text>
+          <text x="620" y="112">queen</text>
+          <text x="105" y="277">man</text>
+          <text x="620" y="277">woman</text>
+        </g>
+        <g stroke="#B9C7B4" stroke-width="1.5" stroke-dasharray="5 7">
+          <path d="M105 140v90M620 140v90"/>
+        </g>
+        <text x="360" y="80" text-anchor="middle" font-family="var(--mono)" font-size="14" fill="#4B6660">The same direction</text>
+      </svg>
+    </div>
+  </section>
+
+  <section class="plate wrap rise">
+    <p class="plate__eyebrow">05 / What is it for?</p>
+    <h2 class="plate__title">Find the nearest neighbors.</h2>
+    <p class="plate__note">Turn your question into coordinates, then search nearby for relevant answers.</p>
+    <div class="uses">
+      <div class="use">
+        <svg viewBox="0 0 100 80" aria-hidden="true">
+          <circle cx="44" cy="36" r="22" fill="none" stroke="#1B3B36" stroke-width="3"/>
+          <path d="M60 52l18 18" stroke="#C33C54" stroke-width="4" stroke-linecap="round"/>
+        </svg>
+        <span>Search</span>
+      </div>
+      <div class="use">
+        <svg viewBox="0 0 100 80" aria-hidden="true">
+          <circle cx="30" cy="30" r="7" fill="#1B3B36"/>
+          <circle cx="66" cy="24" r="7" fill="#D9A227"/>
+          <circle cx="52" cy="58" r="7" fill="#3E7C8C"/>
+          <path d="M30 30l36-6M66 24L52 58M52 58L30 30" stroke="#B9C7B4" stroke-width="2"/>
+        </svg>
+        <span>Recommendations</span>
+      </div>
+      <div class="use">
+        <svg viewBox="0 0 100 80" aria-hidden="true">
+          <rect x="18" y="16" width="30" height="48" fill="none" stroke="#1B3B36" stroke-width="3"/>
+          <rect x="52" y="16" width="30" height="48" fill="none" stroke="#1B3B36" stroke-width="3"/>
+          <path d="M24 30h18M24 42h18M58 30h18" stroke="#C33C54" stroke-width="3"/>
+        </svg>
+        <span>Reference lookup</span>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="end wrap">
+  <p class="end__line">Embedding<br>turns <em>meaning</em> into <em>coordinates</em> on a map.</p>
+  <p class="end__foot">END</p>
+</footer>
+
+<script>
+(function(){
+  var reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  /* hero numbers */
+  var final = ["0.93","0.77","-0.41","0.11","0.68","-0.02","0.55"];
+  var box = document.getElementById("nums");
+  final.forEach(function(v){
+    var d = document.createElement("div");
+    d.className = "num"; d.textContent = v; box.appendChild(d);
+  });
+  var dots = document.createElement("div");
+  dots.className = "num num--dots"; dots.textContent = "…1,536 in total";
+  box.appendChild(dots);
+
+  if(!reduce){
+    var cells = box.querySelectorAll(".num:not(.num--dots)");
+    var t = 0, id = setInterval(function(){
+      t++;
+      cells.forEach(function(c,i){
+        if(t > 6 + i*2){ c.textContent = final[i]; return; }
+        var r = (Math.random()*2-1).toFixed(2);
+        c.textContent = r.charAt(0)==="-" ? r : "0"+r.slice(1);
+      });
+      if(t > 24){ clearInterval(id); cells.forEach(function(c,i){c.textContent = final[i];}); }
+    }, 55);
+  }
+
+  /* meaning map */
+  var words = [
+    {w:"cat",   x:190, y:170},
+    {w:"dog",   x:248, y:214},
+    {w:"tiger", x:172, y:246},
+    {w:"rabbit", x:262, y:140},
+    {w:"apple", x:576, y:154},
+    {w:"banana", x:648, y:200},
+    {w:"grape", x:556, y:216},
+    {w:"car", x:392, y:410},
+    {w:"train", x:462, y:452},
+    {w:"plane", x:372, y:472}
+  ];
+  var pins = document.getElementById("pins");
+  var links = document.getElementById("links");
+  var cap = document.getElementById("cap");
+  var NS = "http://www.w3.org/2000/svg";
+
+  words.forEach(function(p, i){
+    var g = document.createElementNS(NS,"g");
+    g.setAttribute("class","pin-hit");
+    g.setAttribute("tabindex","0");
+    g.setAttribute("role","button");
+    g.setAttribute("aria-label", p.w);
+    g.dataset.i = i;
+
+    var ring = document.createElementNS(NS,"circle");
+    ring.setAttribute("class","pin-ring");
+    ring.setAttribute("cx",p.x); ring.setAttribute("cy",p.y); ring.setAttribute("r",22);
+
+    var dot = document.createElementNS(NS,"circle");
+    dot.setAttribute("class","pin-dot");
+    dot.setAttribute("cx",p.x); dot.setAttribute("cy",p.y); dot.setAttribute("r",8);
+
+    var tx = document.createElementNS(NS,"text");
+    tx.setAttribute("class","pin-label");
+    tx.setAttribute("x",p.x+14); tx.setAttribute("y",p.y+7);
+    tx.textContent = p.w;
+
+    g.appendChild(ring); g.appendChild(dot); g.appendChild(tx);
+    g.addEventListener("click", function(){ select(i); });
+    g.addEventListener("keydown", function(e){
+      if(e.key==="Enter"||e.key===" "){ e.preventDefault(); select(i); }
+    });
+    pins.appendChild(g);
+  });
+
+  function select(i){
+    var me = words[i];
+    var others = words.map(function(p,j){
+      return {j:j, d:Math.hypot(p.x-me.x, p.y-me.y)};
+    }).filter(function(o){ return o.j !== i; })
+      .sort(function(a,b){ return a.d-b.d; })
+      .slice(0,2);
+
+    var nearIdx = others.map(function(o){ return o.j; });
+    pins.querySelectorAll(".pin-hit").forEach(function(g){
+      var k = +g.dataset.i;
+      g.dataset.on = (k===i) ? "1" : "0";
+      g.dataset.near = (nearIdx.indexOf(k)>-1) ? "1" : "0";
+    });
+
+    links.textContent = "";
+    others.forEach(function(o){
+      var q = words[o.j];
+      var l = document.createElementNS(NS,"line");
+      l.setAttribute("x1",me.x); l.setAttribute("y1",me.y);
+      l.setAttribute("x2",q.x); l.setAttribute("y2",q.y);
+      links.appendChild(l);
+    });
+
+    cap.innerHTML = "Nearest to <b>"+me.w+"</b> : "+nearIdx.map(function(k){return words[k].w;}).join(" · ");
+  }
+  select(0);
+
+  /* reveal */
+  var items = document.querySelectorAll(".rise");
+  if(!("IntersectionObserver" in window) || reduce){
+    items.forEach(function(el){ el.classList.add("on"); });
+  } else {
+    var io = new IntersectionObserver(function(entries){
+      entries.forEach(function(en){
+        if(en.isIntersecting){ en.target.classList.add("on"); io.unobserve(en.target); }
+      });
+    }, {threshold:.15});
+    items.forEach(function(el){ io.observe(el); });
+  }
+})();
+</script>
+</body>
+</html>
