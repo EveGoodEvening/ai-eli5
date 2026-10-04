@@ -106,7 +106,7 @@ try {
     }
   }
 
-  // Inspect all 38 real pages at phone and desktop widths after nav injection.
+  // Inspect every real page at phone and desktop widths after nav injection.
   for (const width of [360, 1280]) {
     await page.setViewportSize({width, height: 900});
     for (const locale of ["en", "zh-CN"]) {

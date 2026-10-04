@@ -10,6 +10,7 @@
   "paged-attention-explainer",
   "post-training-explained",
   "ppo-explained",
+  "prefill-decode-explained",
   "quantization",
   "recursive-self-improvement",
   "rl-environment-sheet",

@@ -1,0 +1,817 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Prefill 与 Decode：先读完，再一个字一个字写</title>
+<style>
+  :root{
+    --paper:#F4EFE6;
+    --card:#FFFDF9;
+    --ink:#1B2130;
+    --muted:#686C78;
+    --line:#DCD3C3;
+    --read:#2F55D4;
+    --read-ink:#1F3A9E;
+    --read-soft:#E1E7FF;
+    --write:#DD4F26;
+    --write-ink:#B83C17;
+    --write-soft:#FFE3D8;
+    --kv:#0E9A82;
+    --kv-ink:#0B7A67;
+    --amber-ink:#9A6700;
+    --sans:"PingFang SC","Hiragino Sans GB","Microsoft YaHei UI","Microsoft YaHei","Noto Sans SC","Source Han Sans SC",system-ui,sans-serif;
+    --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  [hidden]{display:none !important}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    margin:0; background:var(--paper); color:var(--ink);
+    font-family:var(--sans); line-height:1.7;
+    background-image:radial-gradient(rgba(27,33,48,.07) 1px, transparent 1.3px);
+    background-size:22px 22px;
+  }
+  .wrap{max-width:960px;margin:0 auto;padding:0 20px 72px}
+  svg{display:block;width:100%;height:auto}
+  svg text{font-family:var(--sans)}
+  svg .m{font-family:var(--mono)}
+
+  /* ---------- hero ---------- */
+  header{padding:60px 0 8px}
+  .eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.2em;text-transform:uppercase;color:var(--muted);margin:0 0 14px}
+  h1{font-size:clamp(32px,6.4vw,62px);line-height:1.14;font-weight:850;letter-spacing:-.02em;margin:0 0 16px;max-width:15em}
+  h1 .r{color:var(--read)}
+  h1 .w{color:var(--write)}
+  h1 span{white-space:nowrap}
+  .lead{font-size:clamp(17px,2.3vw,21px);color:#394055;margin:0;max-width:34em}
+  .tiny{font-size:14px;color:var(--muted);margin:10px 0 0}
+  .hero{display:grid;grid-template-columns:1fr 44px 1fr;align-items:center;gap:8px;margin-top:30px}
+  .panel{border-radius:20px;padding:10px}
+  .panel.read{background:var(--read-soft)}
+  .panel.write{background:var(--write-soft)}
+  .hero .arrow{font-size:34px;font-weight:800;text-align:center;line-height:1}
+  .hero .hl rect,.hero .ht > g,.hero .tk rect,.hero .hbar{transition:opacity .35s ease}
+
+  /* ---------- sections ---------- */
+  section{padding:64px 0 4px}
+  .step{font-family:var(--mono);font-size:13px;letter-spacing:.18em;color:var(--muted);margin:0 0 6px}
+  h2{font-size:clamp(26px,4.4vw,42px);line-height:1.22;font-weight:800;letter-spacing:-.01em;margin:0 0 10px}
+  h3{font-size:clamp(20px,3vw,26px);line-height:1.3;margin:40px 0 0}
+  .fig{margin:22px 0 0;background:var(--card);border:1px solid var(--line);border-radius:20px;padding:18px 16px;box-shadow:0 2px 0 rgba(27,33,48,.04)}
+  .scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .punch{font-size:clamp(18px,2.6vw,23px);font-weight:750;line-height:1.5;margin:20px 0 0}
+  .punch .r{color:var(--read)}
+  .punch .w{color:var(--write-ink)}
+  .punch .k{color:var(--kv-ink)}
+  .note{font-size:13.5px;color:var(--muted);margin:10px 0 0}
+
+  .duo{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:18px}
+  .pill{border-radius:16px;padding:16px 18px;font-size:18px;font-weight:700;line-height:1.45}
+  .pill b{display:block;font-family:var(--mono);font-size:22px;margin-bottom:2px}
+  .pill small{display:block;font-weight:400;font-size:14.5px;color:#3C4254;margin-top:4px}
+  .pill.read{background:var(--read-soft);color:var(--read-ink)}
+  .pill.write{background:var(--write-soft);color:var(--write-ink)}
+  .pill.kv{background:#D2F0E8;color:var(--kv-ink)}
+
+  /* ---------- controls ---------- */
+  .ctrl{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:16px}
+  button{font:inherit;font-size:16px;font-weight:700;border-radius:999px;padding:9px 18px;border:2px solid var(--ink);background:var(--ink);color:#fff;cursor:pointer}
+  button.ghost,.modes button{background:transparent;color:var(--ink)}
+  .modes button[aria-pressed="true"]{background:var(--ink);color:#fff}
+  button:disabled{opacity:.4;cursor:not-allowed}
+  button:focus-visible{outline:3px solid var(--read);outline-offset:3px}
+  .status{min-height:3.4em;margin:14px 0 0;padding:12px 16px;font-size:16.5px;background:#FFF5EF;border-left:4px solid var(--write);border-radius:0 12px 12px 0}
+  .cap{margin:14px 0 0;padding:12px 16px;font-size:16.5px;background:#F1F4FF;border-left:4px solid var(--read);border-radius:0 12px 12px 0}
+
+  .ask{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:18px}
+  .ask div{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px 14px;font-size:21px;font-weight:800;text-align:center}
+  .ask span{display:block;font-family:var(--mono);font-size:12px;letter-spacing:.14em;color:var(--muted);font-weight:500}
+
+  .tools{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:22px}
+  .tool{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:20px}
+  .tool .g{font-size:46px;font-weight:900;line-height:1}
+  .tool .n{font-family:var(--mono);font-size:13px;color:var(--muted);margin:10px 0 4px}
+  .tool p{margin:0;font-size:16.5px;font-weight:600}
+
+  .recap{margin-top:72px;background:var(--ink);color:#fff;border-radius:24px;padding:34px 26px}
+  .recap h2{color:#fff}
+  .recap .duo{margin-top:22px}
+  .recap .pill small{color:inherit;opacity:.85}
+  .source{font-size:13.5px;color:var(--muted);margin:26px 0 0;text-align:center}
+  .source a{color:var(--read-ink)}
+
+  @keyframes flow{to{stroke-dashoffset:-18}}
+  .loop{stroke-dasharray:10 8;animation:flow 1.1s linear infinite}
+  @keyframes send{0%{transform:translateX(-40px);opacity:0}20%{opacity:1}80%{opacity:1}100%{transform:translateX(40px);opacity:0}}
+  .pkt{animation:send 2.4s linear infinite}
+  @keyframes pulse{50%{opacity:.35}}
+  .busy{animation:pulse 1.2s ease-in-out infinite}
+
+  @media (max-width:700px){
+    .hero{grid-template-columns:1fr}
+    .hero .arrow{transform:rotate(90deg)}
+    .tools{grid-template-columns:1fr}
+  }
+  @media (max-width:600px){
+    .duo,.ask{grid-template-columns:1fr}
+    .fig{padding:12px 10px}
+    .wide svg{min-width:560px}
+    .wide::before{content:"← 左右滑动看全图 →";display:block;font-size:12px;color:var(--muted);text-align:center;margin-bottom:6px}
+    .recap{padding:28px 18px}
+  }
+  @media (prefers-reduced-motion:reduce){
+    .loop,.pkt,.busy{animation:none}
+    .hero .hl rect,.hero .ht > g,.hero .tk rect,.hero .hbar{transition:none}
+  }
+</style>
+<!-- eli5:head:start -->
+<link rel="alternate" hreflang="en" href="prefill-decode-explained.en.html">
+<link rel="alternate" hreflang="zh-CN" href="prefill-decode-explained.zh-CN.html">
+<link rel="stylesheet" href="language.css">
+<script src="language.js" defer></script>
+<!-- eli5:head:end -->
+</head>
+<body>
+<!-- eli5:nav:start -->
+<div class="eli5-site-nav" role="navigation" aria-label="图解导航与语言选择">
+  <a class="eli5-nav-home" href="index.html?lang=zh-CN">← 图解目录</a>
+  <div class="eli5-languages">
+    <a href="prefill-decode-explained.zh-CN.html" data-language="zh-CN" lang="zh-CN" hreflang="zh-CN" aria-current="page">简体中文</a>
+    <a href="prefill-decode-explained.en.html" data-language="en" lang="en" hreflang="en">English</a>
+  </div>
+</div>
+<!-- eli5:nav:end -->
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <defs>
+    <marker id="ah-ink" viewBox="0 0 10 10" refX="8" refY="5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#1B2130"/></marker>
+    <marker id="ah-read" viewBox="0 0 10 10" refX="8" refY="5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#2F55D4"/></marker>
+    <marker id="ah-write" viewBox="0 0 10 10" refX="8" refY="5" markerUnits="userSpaceOnUse" markerWidth="14" markerHeight="14" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#DD4F26"/></marker>
+    <marker id="ah-kv" viewBox="0 0 10 10" refX="8" refY="5" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#0E9A82"/></marker>
+    <marker id="ah-muted" viewBox="0 0 10 10" refX="8" refY="5" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#B3AA99"/></marker>
+    <pattern id="hatch" width="10" height="10" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="10" height="10" fill="#E1E7FF"/><line x1="0" y1="0" x2="0" y2="10" stroke="#2F55D4" stroke-width="4" opacity=".3"/></pattern>
+    <pattern id="tick-w" x="110" width="26" height="1000" patternUnits="userSpaceOnUse"><rect width="18" height="1000" fill="#DD4F26"/></pattern>
+    <pattern id="tick-b" x="110" width="26" height="1000" patternUnits="userSpaceOnUse"><rect width="18" height="1000" fill="#F4A387"/></pattern>
+  </defs>
+</svg>
+
+<div class="wrap">
+
+<header>
+  <p class="eyebrow">大模型推理 · Prefill / Decode</p>
+  <h1>AI 回答你之前，<span class="r">先读完</span>，再<span class="w">一个字一个字写</span>。</h1>
+  <p class="lead">读的那步叫 <b>prefill</b>，写的那步叫 <b>decode</b>。分清它俩，就知道 AI 慢在哪。</p>
+  <p class="tiny">这里的「字」指 token：模型处理文字的小单位。</p>
+
+  <div class="hero" id="hero">
+    <div class="panel read">
+      <svg viewBox="0 0 360 280" role="img" aria-label="Prefill：整份输入的每一行同时被读进去，读完才开口">
+        <path d="M24 20 H130 L156 46 V212 H24 Z" fill="#fff" stroke="#2F55D4" stroke-width="2.5" stroke-linejoin="round"/>
+        <path d="M130 20 V46 H156" fill="none" stroke="#2F55D4" stroke-width="2.5" stroke-linejoin="round"/>
+        <g class="hl" fill="#2F55D4">
+          <rect x="40" y="62" width="100" height="8" rx="4"/>
+          <rect x="40" y="78" width="86" height="8" rx="4"/>
+          <rect x="40" y="94" width="100" height="8" rx="4"/>
+          <rect x="40" y="110" width="72" height="8" rx="4"/>
+          <rect x="40" y="126" width="100" height="8" rx="4"/>
+          <rect x="40" y="142" width="92" height="8" rx="4"/>
+          <rect x="40" y="158" width="100" height="8" rx="4"/>
+          <rect x="40" y="174" width="64" height="8" rx="4"/>
+          <rect x="40" y="190" width="88" height="8" rx="4"/>
+        </g>
+        <text x="184" y="74" font-size="40" font-weight="800" fill="#2F55D4">① 读</text>
+        <text x="186" y="106" class="m" font-size="20" font-weight="700" fill="#2F55D4">Prefill</text>
+        <text x="186" y="150" font-size="18" fill="#1B2130">整份输入</text>
+        <text x="186" y="176" font-size="18" fill="#1B2130">一起处理</text>
+        <g class="hbar">
+          <rect x="24" y="232" width="312" height="30" rx="8" fill="#2F55D4"/>
+          <text x="180" y="253" text-anchor="middle" font-size="15" font-weight="700" fill="#fff">读完，才开口</text>
+        </g>
+      </svg>
+    </div>
+    <div class="arrow" aria-hidden="true">→</div>
+    <div class="panel write">
+      <svg viewBox="0 0 360 280" role="img" aria-label="Decode：回答一次只写出一个字，一个接一个">
+        <text x="24" y="74" font-size="40" font-weight="800" fill="#DD4F26">② 写</text>
+        <text x="26" y="106" class="m" font-size="20" font-weight="700" fill="#DD4F26">Decode</text>
+        <text x="336" y="106" text-anchor="end" font-size="17" fill="#1B2130">一次写一个字</text>
+        <g class="ht" font-size="18" font-weight="700" text-anchor="middle" fill="#B83C17">
+          <g><rect x="24" y="128" width="72" height="40" rx="8" fill="#fff" stroke="#DD4F26" stroke-width="2"/><text x="60" y="154">领导</text></g>
+          <g><rect x="106" y="128" width="72" height="40" rx="8" fill="#fff" stroke="#DD4F26" stroke-width="2"/><text x="142" y="154">：</text></g>
+          <g><rect x="188" y="128" width="72" height="40" rx="8" fill="#fff" stroke="#DD4F26" stroke-width="2"/><text x="224" y="154">支付</text></g>
+          <g><rect x="270" y="128" width="72" height="40" rx="8" fill="#fff" stroke="#DD4F26" stroke-width="2"/><text x="306" y="154">接口</text></g>
+          <g><rect x="24" y="178" width="72" height="40" rx="8" fill="#fff" stroke="#DD4F26" stroke-width="2"/><text x="60" y="204">还</text></g>
+          <g><rect x="106" y="178" width="72" height="40" rx="8" fill="#fff" stroke="#DD4F26" stroke-width="2"/><text x="142" y="204">没</text></g>
+          <g><rect x="188" y="178" width="72" height="40" rx="8" fill="#fff" stroke="#DD4F26" stroke-width="2"/><text x="224" y="204">联调</text></g>
+          <g><rect x="270" y="178" width="72" height="40" rx="8" fill="#fff" stroke="#DD4F26" stroke-width="2"/><text x="306" y="204">。</text></g>
+        </g>
+        <g class="tk" fill="#DD4F26">
+          <rect x="24" y="232" width="30" height="30" rx="6"/>
+          <rect x="64" y="232" width="30" height="30" rx="6"/>
+          <rect x="104" y="232" width="30" height="30" rx="6"/>
+          <rect x="144" y="232" width="30" height="30" rx="6"/>
+          <rect x="184" y="232" width="30" height="30" rx="6"/>
+          <rect x="224" y="232" width="30" height="30" rx="6"/>
+          <rect x="264" y="232" width="30" height="30" rx="6"/>
+          <rect x="304" y="232" width="30" height="30" rx="6"/>
+        </g>
+      </svg>
+    </div>
+  </div>
+</header>
+
+<!-- 01 · two waits -->
+<section id="wait">
+  <p class="step">01</p>
+  <h2>等 AI 回答，其实在等两件事</h2>
+  <p class="lead">多久才开口？开口后写得多快？</p>
+  <figure class="fig wide">
+    <div class="scroll">
+      <svg viewBox="0 0 800 262" role="img" aria-label="时间线：发出请求后，先等模型读完输入，第一个字才出现，这段叫 TTFT；之后每两个字之间的间隔叫 ITL。">
+        <text x="220" y="40" text-anchor="middle" font-size="22" font-weight="800" fill="#2F55D4"><tspan class="m">TTFT</tspan> · 多久开口</text>
+        <path d="M40 66 V54 H400 V66" fill="none" stroke="#2F55D4" stroke-width="3"/>
+        <circle cx="40" cy="126" r="11" fill="#1B2130"/>
+        <text x="40" y="182" text-anchor="middle" font-size="15" fill="#1B2130">发出请求</text>
+        <rect x="62" y="102" width="326" height="48" rx="10" fill="#E1E7FF" stroke="#2F55D4" stroke-width="2" stroke-dasharray="6 5"/>
+        <text x="225" y="133" text-anchor="middle" font-size="18" font-weight="700" fill="#2F55D4">模型在读输入…</text>
+        <g font-size="20" font-weight="700" text-anchor="middle" fill="#fff">
+          <rect x="400" y="96" width="64" height="60" rx="10" fill="#DD4F26"/><text x="432" y="133">领导</text>
+          <rect x="494" y="96" width="64" height="60" rx="10" fill="#DD4F26"/><text x="526" y="133">：</text>
+          <rect x="588" y="96" width="64" height="60" rx="10" fill="#DD4F26"/><text x="620" y="133">支付</text>
+          <rect x="682" y="96" width="64" height="60" rx="10" fill="#DD4F26"/><text x="714" y="133">接口</text>
+        </g>
+        <g fill="none" stroke="#DD4F26" stroke-width="2.5">
+          <path d="M432 166 V176 H526 V166"/>
+          <path d="M526 166 V176 H620 V166"/>
+          <path d="M620 166 V176 H714 V166"/>
+        </g>
+        <text x="573" y="206" text-anchor="middle" font-size="22" font-weight="800" fill="#B83C17"><tspan class="m">ITL</tspan> · 之后写得多快</text>
+        <line x1="20" y1="230" x2="780" y2="230" stroke="#CFC6B5" stroke-width="2" marker-end="url(#ah-muted)"/>
+        <text x="780" y="254" text-anchor="end" font-size="14" fill="#686C78">时间</text>
+      </svg>
+    </div>
+  </figure>
+  <div class="duo">
+    <div class="pill read"><b>TTFT</b>迟迟不开口？<small>首个字出现前的等待：主要是 prefill，也可能有排队、传输。</small></div>
+    <div class="pill write"><b>ITL</b>开口后写得慢？<small>字与字之间的间隔：来自 decode。</small></div>
+  </div>
+</section>
+
+<!-- 02 · prefill -->
+<section id="prefill">
+  <p class="step">02 · PREFILL</p>
+  <h2>Prefill：先把输入整份读完</h2>
+  <p class="lead">只要三条结论？几十页文档也得先读完。</p>
+  <figure class="fig wide">
+    <div class="scroll">
+      <svg viewBox="0 0 800 410" role="img" aria-label="四个输入字同时进入模型；每个位置的 K/V 存进缓存；每个位置只能看自己和前面的位置；最后一个位置预测出第一个新字，此时缓存里还没有这个新字的 K/V。">
+        <text x="100" y="30" text-anchor="middle" font-size="16" font-weight="800" fill="#2F55D4">输入（都已知）</text>
+        <text x="260" y="30" text-anchor="middle" font-size="16" font-weight="800" fill="#0B7A67">K/V 存进缓存</text>
+        <text x="484" y="30" text-anchor="middle" font-size="16" font-weight="800" fill="#1B2130">谁能看谁 <tspan font-size="13" font-weight="400" fill="#686C78">· 只看自己和前面</tspan></text>
+
+        <g class="m" font-size="16" fill="#686C78" text-anchor="middle">
+          <text x="24" y="106">x₁</text><text x="24" y="176">x₂</text><text x="24" y="246">x₃</text><text x="24" y="316">x₄</text>
+        </g>
+        <g font-size="18" font-weight="700" text-anchor="middle" fill="#1F3A9E">
+          <rect x="46" y="72" width="130" height="56" rx="10" fill="#E1E7FF" stroke="#2F55D4" stroke-width="2"/><text x="111" y="106">周五</text>
+          <rect x="46" y="142" width="130" height="56" rx="10" fill="#E1E7FF" stroke="#2F55D4" stroke-width="2"/><text x="111" y="176">上线</text>
+          <rect x="46" y="212" width="130" height="56" rx="10" fill="#E1E7FF" stroke="#2F55D4" stroke-width="2"/><text x="111" y="246">支付接口</text>
+          <rect x="46" y="282" width="130" height="56" rx="10" fill="#E1E7FF" stroke="#2F55D4" stroke-width="2"/><text x="111" y="316">没联调</text>
+        </g>
+        <g stroke="#2F55D4" stroke-width="3">
+          <path d="M180 100 H214" marker-end="url(#ah-read)"/>
+          <path d="M180 170 H214" marker-end="url(#ah-read)"/>
+          <path d="M180 240 H214" marker-end="url(#ah-read)"/>
+          <path d="M180 310 H214" marker-end="url(#ah-read)"/>
+        </g>
+        <g class="m" font-size="16" font-weight="700" text-anchor="middle" fill="#fff">
+          <rect x="220" y="72" width="80" height="56" rx="10" fill="#0E9A82"/><text x="260" y="106">K₁V₁</text>
+          <rect x="220" y="142" width="80" height="56" rx="10" fill="#0E9A82"/><text x="260" y="176">K₂V₂</text>
+          <rect x="220" y="212" width="80" height="56" rx="10" fill="#0E9A82"/><text x="260" y="246">K₃V₃</text>
+          <rect x="220" y="282" width="80" height="56" rx="10" fill="#0E9A82"/><text x="260" y="316">K₄V₄</text>
+        </g>
+        <g fill="none" stroke="#0E9A82" stroke-width="2" stroke-dasharray="4 4">
+          <path d="M304 100 H354"/><path d="M304 170 H354"/><path d="M304 240 H354"/><path d="M304 310 H354"/>
+        </g>
+        <g class="m" font-size="14" fill="#686C78" text-anchor="middle">
+          <text x="388" y="66">1</text><text x="452" y="66">2</text><text x="516" y="66">3</text><text x="580" y="66">4</text>
+        </g>
+        <g>
+          <rect x="360" y="72" width="56" height="56" rx="8" fill="#2F55D4"/>
+          <rect x="424" y="72" width="56" height="56" rx="8" fill="#ECE6DA"/>
+          <rect x="488" y="72" width="56" height="56" rx="8" fill="#ECE6DA"/>
+          <rect x="552" y="72" width="56" height="56" rx="8" fill="#ECE6DA"/>
+          <rect x="360" y="142" width="56" height="56" rx="8" fill="#2F55D4"/>
+          <rect x="424" y="142" width="56" height="56" rx="8" fill="#2F55D4"/>
+          <rect x="488" y="142" width="56" height="56" rx="8" fill="#ECE6DA"/>
+          <rect x="552" y="142" width="56" height="56" rx="8" fill="#ECE6DA"/>
+          <rect x="360" y="212" width="56" height="56" rx="8" fill="#2F55D4"/>
+          <rect x="424" y="212" width="56" height="56" rx="8" fill="#2F55D4"/>
+          <rect x="488" y="212" width="56" height="56" rx="8" fill="#2F55D4"/>
+          <rect x="552" y="212" width="56" height="56" rx="8" fill="#ECE6DA"/>
+          <rect x="360" y="282" width="56" height="56" rx="8" fill="#2F55D4"/>
+          <rect x="424" y="282" width="56" height="56" rx="8" fill="#2F55D4"/>
+          <rect x="488" y="282" width="56" height="56" rx="8" fill="#2F55D4"/>
+          <rect x="552" y="282" width="56" height="56" rx="8" fill="#2F55D4"/>
+        </g>
+        <path d="M612 310 H656" stroke="#DD4F26" stroke-width="3.5" marker-end="url(#ah-write)"/>
+        <text x="724" y="270" text-anchor="middle" font-size="14" font-weight="700" fill="#B83C17">第一个新字</text>
+        <rect x="664" y="282" width="120" height="56" rx="10" fill="#DD4F26"/>
+        <text x="724" y="318" text-anchor="middle" font-size="22" font-weight="800" fill="#fff">领导</text>
+        <rect x="220" y="352" width="80" height="48" rx="10" fill="none" stroke="#DD4F26" stroke-width="2" stroke-dasharray="6 5"/>
+        <text x="260" y="382" text-anchor="middle" class="m" font-size="16" font-weight="700" fill="#B83C17">y₁ ?</text>
+        <text x="312" y="382" font-size="15" fill="#686C78">← 新字「领导」的 K/V 还没有</text>
+      </svg>
+    </div>
+  </figure>
+  <p class="punch">输入全都已知 → 不用一个字一个字排队，<span class="r">整块一起算</span>。</p>
+  <p class="note">每一层都这样算一遍，再交给下一层。走完最后一层，最后一个位置负责预测第一个新字。</p>
+</section>
+
+<!-- 03 · why parallel -->
+<section id="parallel">
+  <p class="step">03</p>
+  <h2>第 2 个字要用第 1 个字的信息，怎么还能一起算？</h2>
+  <figure class="fig wide">
+    <div class="scroll">
+      <svg viewBox="0 0 800 262" role="img" aria-label="同一层里，第 2 个位置要用的是第 1 个位置的 K₁、V₁，它们由输入直接算出；不需要等第 1 个位置的注意力结果 O₁。">
+        <g class="m" font-size="22" font-weight="800" text-anchor="middle" fill="#1F3A9E">
+          <rect x="30" y="55" width="70" height="50" rx="10" fill="#E1E7FF" stroke="#2F55D4" stroke-width="2"/><text x="65" y="88">h₁</text>
+          <rect x="30" y="195" width="70" height="50" rx="10" fill="#E1E7FF" stroke="#2F55D4" stroke-width="2"/><text x="65" y="228">h₂</text>
+        </g>
+        <g stroke="#1B2130" stroke-width="2.5">
+          <path d="M104 80 H132" marker-end="url(#ah-ink)"/><path d="M104 220 H132" marker-end="url(#ah-ink)"/>
+          <path d="M316 80 H412" marker-end="url(#ah-ink)"/><path d="M316 220 H412" marker-end="url(#ah-ink)"/>
+          <path d="M542 80 H590" marker-end="url(#ah-ink)"/><path d="M542 220 H590" marker-end="url(#ah-ink)"/>
+        </g>
+        <g class="m" font-size="18" font-weight="800" text-anchor="middle">
+          <rect x="138" y="55" width="54" height="50" rx="8" fill="#E1E7FF"/><text x="165" y="87" fill="#1F3A9E">Q₁</text>
+          <rect x="198" y="55" width="54" height="50" rx="8" fill="#0E9A82"/><text x="225" y="87" fill="#fff">K₁</text>
+          <rect x="258" y="55" width="54" height="50" rx="8" fill="#0E9A82"/><text x="285" y="87" fill="#fff">V₁</text>
+          <rect x="138" y="195" width="54" height="50" rx="8" fill="#E1E7FF"/><text x="165" y="227" fill="#1F3A9E">Q₂</text>
+          <rect x="198" y="195" width="54" height="50" rx="8" fill="#0E9A82"/><text x="225" y="227" fill="#fff">K₂</text>
+          <rect x="258" y="195" width="54" height="50" rx="8" fill="#0E9A82"/><text x="285" y="227" fill="#fff">V₂</text>
+        </g>
+        <g font-size="17" font-weight="700" text-anchor="middle" fill="#fff">
+          <rect x="418" y="55" width="120" height="50" rx="10" fill="#1B2130"/><text x="478" y="86">注意力</text>
+          <rect x="418" y="195" width="120" height="50" rx="10" fill="#1B2130"/><text x="478" y="226">注意力</text>
+        </g>
+        <g class="m" font-size="20" font-weight="800" text-anchor="middle" fill="#1B2130">
+          <rect x="596" y="55" width="70" height="50" rx="10" fill="#fff" stroke="#1B2130" stroke-width="2"/><text x="631" y="87">O₁</text>
+          <rect x="596" y="195" width="70" height="50" rx="10" fill="#fff" stroke="#1B2130" stroke-width="2"/><text x="631" y="227">O₂</text>
+        </g>
+        <path d="M255 108 L426 190" stroke="#DD4F26" stroke-width="4" marker-end="url(#ah-write)"/>
+        <text x="338" y="166" text-anchor="end" font-size="16" font-weight="800" fill="#B83C17">K₁/V₁ 直接拿来用</text>
+        <path d="M624 108 L552 188" stroke="#B3AA99" stroke-width="2.5" stroke-dasharray="6 5"/>
+        <g stroke="#C2410C" stroke-width="4" stroke-linecap="round"><path d="M578 138 L598 158"/><path d="M598 138 L578 158"/></g>
+        <text x="612" y="166" font-size="16" font-weight="700" fill="#686C78">不用等 O₁</text>
+      </svg>
+    </div>
+  </figure>
+  <p class="punch">第 2 个位置要的是 <span class="k">K₁/V₁</span>（当场就能算出来），不是第 1 个位置的结果 O₁ → <span class="r">两行可以一起算</span>。</p>
+  <p class="note">层与层之间仍要排队：这一层的输出，才是下一层的输入。</p>
+</section>
+
+<!-- 04 · decode -->
+<section id="decode">
+  <p class="step">04 · DECODE</p>
+  <h2>Decode：写一个，送回去，再写一个</h2>
+  <p class="lead">刚写出的字，就是下一步的输入。点一下试试 ↓</p>
+  <figure class="fig wide">
+    <div class="scroll">
+      <svg id="dec-svg" viewBox="0 0 800 410" role="img" aria-label="Decode 循环：模型选出一个新字，把它送回模型，缓存多存一格 K/V，再选出下一个字。">
+        <path class="loop" d="M660 88 V40 Q660 26 646 26 H154 Q140 26 140 40 V84" fill="none" stroke="#DD4F26" stroke-width="4" marker-end="url(#ah-write)"/>
+        <text x="400" y="56" text-anchor="middle" font-size="16" font-weight="800" fill="#B83C17">写出的字 → 下一步的输入</text>
+        <rect x="60" y="90" width="160" height="70" rx="12" fill="#fff" stroke="#1B2130" stroke-width="2"/>
+        <text id="dec-in" x="140" y="133" text-anchor="middle" font-size="22" font-weight="800" fill="#1B2130">x₁…x₄</text>
+        <text x="140" y="184" text-anchor="middle" font-size="14" fill="#686C78">这一步的输入</text>
+        <path d="M224 125 H282" stroke="#1B2130" stroke-width="3" marker-end="url(#ah-ink)"/>
+        <rect x="290" y="76" width="220" height="98" rx="16" fill="#1B2130"/>
+        <text x="400" y="122" text-anchor="middle" font-size="26" font-weight="800" fill="#fff">模型</text>
+        <text x="400" y="150" text-anchor="middle" font-size="14" fill="#C4C8D4">每一步都是同一套参数</text>
+        <path d="M514 125 H572" stroke="#1B2130" stroke-width="3" marker-end="url(#ah-ink)"/>
+        <rect x="580" y="90" width="160" height="70" rx="12" fill="#FFE3D8" stroke="#DD4F26" stroke-width="2"/>
+        <text id="dec-out" x="660" y="134" text-anchor="middle" font-size="24" font-weight="800" fill="#B83C17">领导</text>
+        <text x="660" y="184" text-anchor="middle" font-size="14" fill="#686C78">选出的新字</text>
+        <path d="M400 184 V230" stroke="#0E9A82" stroke-width="2.5" stroke-dasharray="5 4" marker-start="url(#ah-kv)" marker-end="url(#ah-kv)"/>
+        <text x="414" y="212" font-size="14" font-weight="700" fill="#0B7A67">读旧的 · 存新的</text>
+        <text x="16" y="228" font-size="16" font-weight="800" fill="#0B7A67">KV 缓存</text>
+        <text id="dec-count" x="784" y="228" text-anchor="end" font-size="16" font-weight="800" fill="#0B7A67">4 格</text>
+        <g class="m" font-size="14" font-weight="700" text-anchor="middle">
+          <g fill="#0E9A82">
+            <rect x="16" y="242" width="42" height="48" rx="6"/><rect x="64" y="242" width="42" height="48" rx="6"/>
+            <rect x="112" y="242" width="42" height="48" rx="6"/><rect x="160" y="242" width="42" height="48" rx="6"/>
+          </g>
+          <g fill="#fff"><text x="37" y="271">x₁</text><text x="85" y="271">x₂</text><text x="133" y="271">x₃</text><text x="181" y="271">x₄</text></g>
+          <g id="dec-slots">
+            <g class="gen" visibility="hidden"><rect x="208" y="242" width="42" height="48" rx="6" fill="#D2F0E8" stroke="#DD4F26" stroke-width="2"/><text x="229" y="271" fill="#1B2130">y₁</text></g>
+            <g class="gen" visibility="hidden"><rect x="256" y="242" width="42" height="48" rx="6" fill="#D2F0E8" stroke="#DD4F26" stroke-width="2"/><text x="277" y="271" fill="#1B2130">y₂</text></g>
+            <g class="gen" visibility="hidden"><rect x="304" y="242" width="42" height="48" rx="6" fill="#D2F0E8" stroke="#DD4F26" stroke-width="2"/><text x="325" y="271" fill="#1B2130">y₃</text></g>
+            <g class="gen" visibility="hidden"><rect x="352" y="242" width="42" height="48" rx="6" fill="#D2F0E8" stroke="#DD4F26" stroke-width="2"/><text x="373" y="271" fill="#1B2130">y₄</text></g>
+            <g class="gen" visibility="hidden"><rect x="400" y="242" width="42" height="48" rx="6" fill="#D2F0E8" stroke="#DD4F26" stroke-width="2"/><text x="421" y="271" fill="#1B2130">y₅</text></g>
+            <g class="gen" visibility="hidden"><rect x="448" y="242" width="42" height="48" rx="6" fill="#D2F0E8" stroke="#DD4F26" stroke-width="2"/><text x="469" y="271" fill="#1B2130">y₆</text></g>
+            <g class="gen" visibility="hidden"><rect x="496" y="242" width="42" height="48" rx="6" fill="#D2F0E8" stroke="#DD4F26" stroke-width="2"/><text x="517" y="271" fill="#1B2130">y₇</text></g>
+            <g class="gen" visibility="hidden"><rect x="544" y="242" width="42" height="48" rx="6" fill="#D2F0E8" stroke="#DD4F26" stroke-width="2"/><text x="565" y="271" fill="#1B2130">y₈</text></g>
+            <g class="gen" visibility="hidden"><rect x="592" y="242" width="42" height="48" rx="6" fill="#D2F0E8" stroke="#DD4F26" stroke-width="2"/><text x="613" y="271" fill="#1B2130">y₉</text></g>
+            <g class="gen" visibility="hidden"><rect x="640" y="242" width="42" height="48" rx="6" fill="#D2F0E8" stroke="#DD4F26" stroke-width="2"/><text x="661" y="271" fill="#1B2130">y₁₀</text></g>
+            <g class="gen" visibility="hidden"><rect x="688" y="242" width="42" height="48" rx="6" fill="#D2F0E8" stroke="#DD4F26" stroke-width="2"/><text x="709" y="271" fill="#1B2130">y₁₁</text></g>
+            <g class="gen" visibility="hidden"><rect x="736" y="242" width="42" height="48" rx="6" fill="#D2F0E8" stroke="#DD4F26" stroke-width="2"/><text x="757" y="271" fill="#1B2130">y₁₂</text></g>
+          </g>
+          <g id="dec-pending" transform="translate(192 0)">
+            <rect x="16" y="242" width="42" height="48" rx="6" fill="none" stroke="#DD4F26" stroke-width="2" stroke-dasharray="5 4"/>
+            <text x="37" y="271" fill="#B83C17">?</text>
+          </g>
+        </g>
+        <text x="16" y="346" font-size="17" fill="#686C78">回答：</text>
+        <text id="dec-text" x="80" y="346" font-size="20" font-weight="800" fill="#1B2130" style="white-space:pre"><tspan fill="#B83C17" text-decoration="underline">领导</tspan></text>
+        <g font-size="14" fill="#1B2130">
+          <rect x="16" y="378" width="18" height="18" rx="4" fill="#0E9A82"/><text x="42" y="392">输入的 K/V</text>
+          <rect x="190" y="378" width="18" height="18" rx="4" fill="#D2F0E8" stroke="#DD4F26" stroke-width="2"/><text x="216" y="392">新字的 K/V</text>
+          <rect x="364" y="378" width="18" height="18" rx="4" fill="none" stroke="#DD4F26" stroke-width="2" stroke-dasharray="4 3"/><text x="390" y="392">刚选出，还没有 K/V</text>
+        </g>
+      </svg>
+    </div>
+  </figure>
+  <div class="ctrl" id="dec-ctrl" hidden>
+    <button type="button" id="dec-next">送回去，写下一个 ▸</button>
+    <button type="button" id="dec-reset" class="ghost">重来</button>
+  </div>
+  <p class="status" id="dec-status" aria-live="polite">刚读完输入，选出第一个字「领导」。缓存里还只有 4 格——「领导」的 K/V 要等它被送回模型才有。</p>
+  <div class="duo">
+    <div class="pill kv">文档的 K/V 原地不动<small>不用每写一个字就把整份文档重算一遍。但每一步仍要读一遍这些 K/V。</small></div>
+    <div class="pill write">为什么不一次写完？<small>下一个字还不知道——得先选出这一个，才有下一步的输入。</small></div>
+  </div>
+</section>
+
+<!-- 05 · two tasks -->
+<section id="two-tasks">
+  <p class="step">05</p>
+  <h2>读长报告 vs 写长稿：慢在不同地方</h2>
+  <figure class="fig wide">
+    <div class="scroll">
+      <svg viewBox="0 0 800 362" role="img" aria-label="A：几十页输入换 3 条结论，时间主要花在 prefill；B：一句话输入换两千字演讲稿，时间主要花在 decode。">
+        <line x1="400" y1="16" x2="400" y2="346" stroke="#DCD3C3" stroke-width="2" stroke-dasharray="6 6"/>
+        <text x="30" y="36" font-size="19" font-weight="800" fill="#1B2130">A · 长报告 → 3 条结论</text>
+        <rect x="68" y="64" width="120" height="160" rx="6" fill="#fff" stroke="#9DB0F2" stroke-width="2"/>
+        <rect x="62" y="70" width="120" height="160" rx="6" fill="#fff" stroke="#9DB0F2" stroke-width="2"/>
+        <rect x="56" y="76" width="120" height="160" rx="6" fill="#fff" stroke="#2F55D4" stroke-width="2"/>
+        <g fill="#C3CDEF">
+          <rect x="70" y="94" width="92" height="7" rx="3.5"/><rect x="70" y="110" width="78" height="7" rx="3.5"/>
+          <rect x="70" y="126" width="92" height="7" rx="3.5"/><rect x="70" y="142" width="66" height="7" rx="3.5"/>
+          <rect x="70" y="158" width="92" height="7" rx="3.5"/><rect x="70" y="174" width="84" height="7" rx="3.5"/>
+          <rect x="70" y="190" width="92" height="7" rx="3.5"/><rect x="70" y="206" width="58" height="7" rx="3.5"/>
+        </g>
+        <text x="116" y="262" text-anchor="middle" font-size="16" font-weight="700" fill="#1F3A9E">输入：几十页</text>
+        <path d="M190 156 H232" stroke="#1B2130" stroke-width="3" marker-end="url(#ah-ink)"/>
+        <rect x="244" y="122" width="112" height="70" rx="8" fill="#fff" stroke="#DD4F26" stroke-width="2"/>
+        <g fill="#DD4F26"><rect x="258" y="138" width="84" height="7" rx="3.5"/><rect x="258" y="154" width="70" height="7" rx="3.5"/><rect x="258" y="170" width="78" height="7" rx="3.5"/></g>
+        <text x="300" y="262" text-anchor="middle" font-size="16" font-weight="700" fill="#B83C17">输出：3 条</text>
+        <rect x="30" y="284" width="262" height="24" rx="6" fill="#2F55D4"/>
+        <g fill="#DD4F26"><rect x="302" y="284" width="12" height="24" rx="3"/><rect x="320" y="284" width="12" height="24" rx="3"/><rect x="338" y="284" width="12" height="24" rx="3"/></g>
+        <text x="30" y="342" font-size="19" font-weight="800" fill="#2F55D4">主要在等 Prefill <tspan font-size="15" font-weight="600" fill="#686C78">· 开口慢</tspan></text>
+
+        <text x="430" y="36" font-size="19" font-weight="800" fill="#1B2130">B · 一句话 → 两千字演讲稿</text>
+        <rect x="440" y="138" width="100" height="36" rx="6" fill="#fff" stroke="#2F55D4" stroke-width="2"/>
+        <rect x="452" y="152" width="76" height="7" rx="3.5" fill="#C3CDEF"/>
+        <text x="490" y="262" text-anchor="middle" font-size="16" font-weight="700" fill="#1F3A9E">输入：一句话</text>
+        <path d="M548 156 H596" stroke="#1B2130" stroke-width="3" marker-end="url(#ah-ink)"/>
+        <rect x="608" y="54" width="150" height="184" rx="8" fill="#fff" stroke="#DD4F26" stroke-width="2"/>
+        <g fill="#F4A387">
+          <rect x="622" y="70" width="122" height="7" rx="3.5"/><rect x="622" y="86" width="104" height="7" rx="3.5"/>
+          <rect x="622" y="102" width="122" height="7" rx="3.5"/><rect x="622" y="118" width="114" height="7" rx="3.5"/>
+          <rect x="622" y="134" width="122" height="7" rx="3.5"/><rect x="622" y="150" width="96" height="7" rx="3.5"/>
+          <rect x="622" y="166" width="122" height="7" rx="3.5"/><rect x="622" y="182" width="110" height="7" rx="3.5"/>
+          <rect x="622" y="198" width="122" height="7" rx="3.5"/><rect x="622" y="214" width="80" height="7" rx="3.5"/>
+        </g>
+        <text x="683" y="262" text-anchor="middle" font-size="16" font-weight="700" fill="#B83C17">输出：两千字</text>
+        <rect x="430" y="284" width="28" height="24" rx="6" fill="#2F55D4"/>
+        <rect x="468" y="284" width="304" height="24" fill="url(#tick-w)"/>
+        <text x="430" y="342" font-size="19" font-weight="800" fill="#DD4F26">主要在等 Decode <tspan font-size="15" font-weight="600" fill="#686C78">· 写得久</tspan></text>
+      </svg>
+    </div>
+  </figure>
+  <p class="note">图形只比较输入、输出的多少，不代表实测耗时。</p>
+</section>
+
+<!-- 06 · bottleneck -->
+<section id="bottleneck">
+  <p class="step">06</p>
+  <h2>同一个模型，干的却是两种活</h2>
+  <p class="lead">每算一步，都要把模型权重从显存搬到计算单元。</p>
+  <figure class="fig wide">
+    <div class="scroll">
+      <svg viewBox="0 0 800 360" role="img" aria-label="Prefill：权重搬一趟，计算单元一次算很多行，常卡在算力。Decode：权重和 KV 搬一趟，只算一行，计算单元闲着等搬运，常卡在内存带宽。">
+        <text x="20" y="44" class="m" font-size="22" font-weight="800" fill="#2F55D4">Prefill</text>
+        <text x="20" y="68" font-size="14" fill="#686C78">一次带来很多行</text>
+        <rect x="20" y="84" width="130" height="70" rx="10" fill="#EFE9DE" stroke="#CFC6B5"/>
+        <text x="85" y="110" text-anchor="middle" font-size="16" font-weight="800">显存</text>
+        <rect x="38" y="122" width="94" height="8" rx="4" fill="#8C8A84"/><rect x="38" y="136" width="94" height="8" rx="4" fill="#8C8A84"/>
+        <rect x="150" y="112" width="290" height="14" fill="#E4DCCD"/>
+        <rect x="236" y="100" width="100" height="38" rx="8" fill="#1B2130"/>
+        <text x="286" y="125" text-anchor="middle" font-size="15" font-weight="700" fill="#fff">权重</text>
+        <path d="M344 119 H434" stroke="#B3AA99" stroke-width="2" marker-end="url(#ah-muted)"/>
+        <rect x="440" y="70" width="160" height="96" rx="12" fill="#fff" stroke="#1B2130" stroke-width="2"/>
+        <text x="520" y="92" text-anchor="middle" font-size="15" font-weight="800">计算单元</text>
+        <g fill="#2F55D4"><rect x="456" y="102" width="128" height="11" rx="4"/><rect x="456" y="118" width="128" height="11" rx="4"/><rect x="456" y="134" width="128" height="11" rx="4"/><rect x="456" y="150" width="128" height="11" rx="4"/></g>
+        <text x="616" y="104" font-size="15" font-weight="700">算力</text>
+        <g fill="#2F55D4"><rect x="700" y="91" width="14" height="16" rx="3"/><rect x="718" y="91" width="14" height="16" rx="3"/><rect x="736" y="91" width="14" height="16" rx="3"/><rect x="754" y="91" width="14" height="16" rx="3"/><rect x="772" y="91" width="14" height="16" rx="3"/></g>
+        <text x="616" y="134" font-size="15" font-weight="700">搬运</text>
+        <g fill="#E4DCCD"><rect x="700" y="121" width="14" height="16" rx="3" fill="#1B2130"/><rect x="718" y="121" width="14" height="16" rx="3" fill="#1B2130"/><rect x="736" y="121" width="14" height="16" rx="3"/><rect x="754" y="121" width="14" height="16" rx="3"/><rect x="772" y="121" width="14" height="16" rx="3"/></g>
+        <text x="616" y="162" font-size="15" font-weight="800" fill="#2F55D4">常卡在：算力</text>
+
+        <line x1="20" y1="186" x2="780" y2="186" stroke="#DCD3C3" stroke-width="2" stroke-dasharray="6 6"/>
+
+        <text x="20" y="224" class="m" font-size="22" font-weight="800" fill="#DD4F26">Decode</text>
+        <text x="20" y="248" font-size="14" fill="#686C78">每一步只带来一行</text>
+        <rect x="20" y="264" width="130" height="70" rx="10" fill="#EFE9DE" stroke="#CFC6B5"/>
+        <text x="85" y="290" text-anchor="middle" font-size="16" font-weight="800">显存</text>
+        <rect x="38" y="302" width="94" height="8" rx="4" fill="#8C8A84"/><rect x="38" y="316" width="94" height="8" rx="4" fill="#8C8A84"/>
+        <rect x="150" y="292" width="290" height="14" fill="#E4DCCD"/>
+        <rect x="226" y="280" width="120" height="38" rx="8" fill="#1B2130"/>
+        <text x="286" y="305" text-anchor="middle" font-size="15" font-weight="700" fill="#fff">权重 + KV</text>
+        <path d="M354 299 H434" stroke="#B3AA99" stroke-width="2" marker-end="url(#ah-muted)"/>
+        <rect x="440" y="250" width="160" height="96" rx="12" fill="#fff" stroke="#1B2130" stroke-width="2"/>
+        <text x="520" y="272" text-anchor="middle" font-size="15" font-weight="800">计算单元</text>
+        <rect x="456" y="282" width="128" height="11" rx="4" fill="#DD4F26"/>
+        <g fill="none" stroke="#CFC6B5" stroke-width="1.5" stroke-dasharray="4 3"><rect x="456" y="298" width="128" height="11" rx="4"/><rect x="456" y="314" width="128" height="11" rx="4"/><rect x="456" y="330" width="128" height="11" rx="4"/></g>
+        <text x="616" y="284" font-size="15" font-weight="700">算力</text>
+        <g fill="#E4DCCD"><rect x="700" y="271" width="14" height="16" rx="3" fill="#DD4F26"/><rect x="718" y="271" width="14" height="16" rx="3"/><rect x="736" y="271" width="14" height="16" rx="3"/><rect x="754" y="271" width="14" height="16" rx="3"/><rect x="772" y="271" width="14" height="16" rx="3"/></g>
+        <text x="616" y="314" font-size="15" font-weight="700">搬运</text>
+        <g fill="#1B2130"><rect x="700" y="301" width="14" height="16" rx="3"/><rect x="718" y="301" width="14" height="16" rx="3"/><rect x="736" y="301" width="14" height="16" rx="3"/><rect x="754" y="301" width="14" height="16" rx="3"/><rect x="772" y="301" width="14" height="16" rx="3"/></g>
+        <text x="616" y="342" font-size="15" font-weight="800" fill="#B83C17">常卡在：搬运（带宽）</text>
+      </svg>
+    </div>
+  </figure>
+  <p class="punch"><span class="r">Prefill</span> 搬一趟，算很多行；<span class="w">decode</span> 搬一趟，只算一行。</p>
+  <p class="note">这是常见倾向（单个请求、小 batch 时），不是定律：batch 变大、换模型或 kernel，瓶颈都可能变。上下文越长，每一步要读的历史 KV 也越多——开头写得快，不代表一直快。</p>
+
+  <h3>看到「每秒 xx 个 token」，先问三句：</h3>
+  <div class="ask">
+    <div><span>01</span>读多长的输入？</div>
+    <div><span>02</span>写多长的回答？</div>
+    <div><span>03</span>几个人同时在用？</div>
+  </div>
+</section>
+
+<!-- 07 · sharing -->
+<section id="sharing">
+  <p class="step">07</p>
+  <h2>别人的长文档，会卡住你的回答吗？</h2>
+  <p class="lead">你的演讲稿写到一半，同事丢进来一整本产品手册。</p>
+  <div class="ctrl modes" id="share-modes" role="group" aria-label="选择安排方式" hidden>
+    <button type="button" data-mode="none" aria-pressed="true">挤在一起</button>
+    <button type="button" data-mode="chunked" aria-pressed="false">切成小块</button>
+    <button type="button" data-mode="split" aria-pressed="false">分开干活</button>
+  </div>
+  <figure class="fig wide">
+    <div class="scroll">
+      <svg viewBox="0 0 800 250" role="img" aria-label="时间线：你的回答和同事的长文档如何共用机器。">
+        <g font-size="14" fill="#1B2130">
+          <rect x="100" y="10" width="16" height="16" rx="3" fill="#DD4F26"/><text x="122" y="23">你的回答（decode）</text>
+          <rect x="290" y="10" width="16" height="16" rx="3" fill="url(#hatch)" stroke="#2F55D4"/><text x="312" y="23">同事的长文档（prefill）</text>
+          <rect x="520" y="10" width="16" height="16" rx="3" fill="#F4A387"/><text x="542" y="23">同事的回答（decode）</text>
+        </g>
+        <g id="share-none">
+          <text x="20" y="108" font-size="14" font-weight="700" fill="#686C78">一台机器</text>
+          <rect x="100" y="70" width="690" height="64" rx="10" fill="#F1EBE0"/>
+          <rect x="110" y="82" width="122" height="40" fill="url(#tick-w)"/>
+          <rect x="240" y="78" width="304" height="48" rx="8" fill="url(#hatch)" stroke="#2F55D4" stroke-width="2"/>
+          <text x="392" y="108" text-anchor="middle" font-size="16" font-weight="800" fill="#1F3A9E">同事的整本手册</text>
+          <rect x="552" y="82" width="226" height="40" fill="url(#tick-w)"/>
+          <path d="M236 146 V156 H548 V146" fill="none" stroke="#D99A00" stroke-width="3"/>
+          <text x="392" y="186" text-anchor="middle" font-size="18" font-weight="800" fill="#9A6700">你的回答卡住了</text>
+        </g>
+        <g id="share-chunked" style="display:none">
+          <text x="20" y="108" font-size="14" font-weight="700" fill="#686C78">一台机器</text>
+          <rect x="100" y="70" width="690" height="64" rx="10" fill="#F1EBE0"/>
+          <rect x="110" y="82" width="44" height="40" fill="url(#tick-w)"/>
+          <rect x="266" y="82" width="44" height="40" fill="url(#tick-w)"/>
+          <rect x="422" y="82" width="44" height="40" fill="url(#tick-w)"/>
+          <rect x="578" y="82" width="200" height="40" fill="url(#tick-w)"/>
+          <g class="m" font-size="16" font-weight="800" fill="#1F3A9E" text-anchor="middle">
+            <rect x="162" y="78" width="96" height="48" rx="8" fill="url(#hatch)" stroke="#2F55D4" stroke-width="2"/><text x="210" y="108">B1</text>
+            <rect x="318" y="78" width="96" height="48" rx="8" fill="url(#hatch)" stroke="#2F55D4" stroke-width="2"/><text x="366" y="108">B2</text>
+            <rect x="474" y="78" width="96" height="48" rx="8" fill="url(#hatch)" stroke="#2F55D4" stroke-width="2"/><text x="522" y="108">B3</text>
+          </g>
+          <g fill="none" stroke="#0E9A82" stroke-width="2.5">
+            <path d="M214 130 Q290 164 360 132" marker-end="url(#ah-kv)"/>
+            <path d="M370 130 Q446 164 516 132" marker-end="url(#ah-kv)"/>
+          </g>
+          <text x="366" y="190" text-anchor="middle" font-size="15" font-weight="700" fill="#0B7A67">后面的块，接着读前面块留下的 KV</text>
+        </g>
+        <g id="share-split" style="display:none">
+          <text x="20" y="84" font-size="14" font-weight="700" fill="#686C78">读取组</text>
+          <rect x="100" y="50" width="690" height="56" rx="10" fill="#F1EBE0"/>
+          <rect x="110" y="56" width="330" height="44" rx="8" fill="url(#hatch)" stroke="#2F55D4" stroke-width="2"/>
+          <text x="275" y="84" text-anchor="middle" font-size="15" font-weight="800" fill="#1F3A9E">同事的手册 · prefill</text>
+          <text x="20" y="176" font-size="14" font-weight="700" fill="#686C78">生成组</text>
+          <rect x="100" y="134" width="690" height="72" rx="10" fill="#F1EBE0"/>
+          <rect x="110" y="142" width="668" height="26" fill="url(#tick-w)"/>
+          <rect x="474" y="174" width="304" height="26" fill="url(#tick-b)"/>
+          <path d="M442 90 C470 90 452 187 468 187" fill="none" stroke="#0E9A82" stroke-width="3" marker-end="url(#ah-kv)"/>
+          <text x="436" y="125" text-anchor="end" font-size="14" font-weight="800" fill="#0B7A67">交接 KV + 状态</text>
+          <text x="492" y="125" font-size="14" font-weight="800" fill="#9A6700">传输有成本</text>
+        </g>
+        <line x1="100" y1="226" x2="780" y2="226" stroke="#CFC6B5" stroke-width="2" marker-end="url(#ah-muted)"/>
+        <text x="780" y="246" text-anchor="end" font-size="13" fill="#686C78">时间</text>
+      </svg>
+    </div>
+  </figure>
+  <p class="cap" id="share-cap" aria-live="polite">一整段 prefill 占住机器太久，你的回答就停住了。</p>
+</section>
+
+<!-- 08 · prefix caching -->
+<section id="prefix">
+  <p class="step">08</p>
+  <h2>同一份文档，再问一次呢？</h2>
+  <figure class="fig wide">
+    <div class="scroll">
+      <svg viewBox="0 36 800 228" role="img" aria-label="第 1 问：整份文档加问题都要算。第 2 问：开头的文档完全一样，直接复用它的 KV，只需算新问题。">
+        <text x="20" y="86" font-size="17" font-weight="800">第 1 问</text>
+        <rect x="110" y="56" width="450" height="48" rx="8" fill="#2F55D4"/>
+        <text x="335" y="87" text-anchor="middle" font-size="18" font-weight="800" fill="#fff">整份文档</text>
+        <rect x="568" y="56" width="212" height="48" rx="8" fill="#6F8BE6"/>
+        <text x="674" y="87" text-anchor="middle" font-size="17" font-weight="700" fill="#fff">总结风险</text>
+        <g stroke="#0E9A82" stroke-width="2.5" stroke-dasharray="5 4">
+          <path d="M200 108 V170" marker-end="url(#ah-kv)"/><path d="M335 108 V170" marker-end="url(#ah-kv)"/><path d="M470 108 V170" marker-end="url(#ah-kv)"/>
+        </g>
+        <text x="572" y="146" font-size="15" font-weight="800" fill="#0B7A67">开头一字不差 → 直接用</text>
+        <text x="20" y="206" font-size="17" font-weight="800">第 2 问</text>
+        <rect x="110" y="176" width="450" height="48" rx="8" fill="#0E9A82"/>
+        <text x="335" y="207" text-anchor="middle" font-size="18" font-weight="800" fill="#fff">整份文档 · 复用 KV</text>
+        <rect x="568" y="176" width="212" height="48" rx="8" fill="#2F55D4"/>
+        <text x="674" y="207" text-anchor="middle" font-size="17" font-weight="700" fill="#fff">列出截止日期</text>
+        <g font-size="14" fill="#1B2130">
+          <rect x="110" y="240" width="16" height="16" rx="3" fill="#2F55D4"/><text x="132" y="253">要算（prefill）</text>
+          <rect x="330" y="240" width="16" height="16" rx="3" fill="#0E9A82"/><text x="352" y="253">复用，不用再算</text>
+        </g>
+      </svg>
+    </div>
+  </figure>
+  <p class="punch">开头完全一样、KV 还留着 → <span class="k">直接复用</span>（prefix caching）。</p>
+  <p class="note">新问题仍要 prefill，新回答仍要 decode。</p>
+
+  <div class="tools" id="toolbox">
+    <div class="tool"><div class="g" style="color:var(--kv-ink)">省</div><p class="n">prefix caching</p><p>能复用的输入，不再重算</p></div>
+    <div class="tool"><div class="g" style="color:var(--read)">切</div><p class="n">chunked prefill</p><p>剩下的长输入，切块穿插着算</p></div>
+    <div class="tool"><div class="g" style="color:var(--write)">分</div><p class="n">prefill/decode 分离</p><p>读和写，交给不同的机器</p></div>
+  </div>
+</section>
+
+<!-- 09 · spark + mac -->
+<section id="spark-mac">
+  <p class="step">09</p>
+  <h2>一台机器读，另一台机器写？</h2>
+  <p class="lead">EXO 演示过：DGX Spark 做 prefill，Mac Studio M3 Ultra 接着做 decode。</p>
+  <figure class="fig wide">
+    <div class="scroll">
+      <svg viewBox="0 0 800 320" role="img" aria-label="左边 DGX Spark 一层层算 prefill，每算完一层就把那层的 KV 通过网络发给右边的 Mac Studio；KV 到齐后，Mac Studio 开始 decode。">
+        <rect x="20" y="20" width="270" height="280" rx="18" fill="#E1E7FF" stroke="#2F55D4" stroke-width="2"/>
+        <text x="155" y="58" text-anchor="middle" class="m" font-size="22" font-weight="800" fill="#2F55D4">DGX Spark</text>
+        <text x="155" y="84" text-anchor="middle" font-size="16" font-weight="700">负责读 · prefill</text>
+        <g class="m" font-size="14" font-weight="800">
+          <rect x="46" y="102" width="218" height="26" rx="6" fill="#2F55D4"/><text x="58" y="120" fill="#fff">L1</text>
+          <rect x="46" y="134" width="218" height="26" rx="6" fill="#2F55D4"/><text x="58" y="152" fill="#fff">L2</text>
+          <rect x="46" y="166" width="218" height="26" rx="6" fill="#2F55D4"/><text x="58" y="184" fill="#fff">L3</text>
+          <rect x="46" y="198" width="218" height="26" rx="6" fill="#2F55D4"/><text x="58" y="216" fill="#fff">L4</text>
+          <rect class="busy" x="46" y="230" width="218" height="26" rx="6" fill="#9DB0F2"/><text x="58" y="248" fill="#1F3A9E">L5</text>
+          <rect x="46" y="262" width="218" height="26" rx="6" fill="#fff" stroke="#9DB0F2" stroke-width="1.5"/><text x="58" y="280" fill="#686C78">L6</text>
+        </g>
+        <text x="252" y="248" text-anchor="end" font-size="13" font-weight="700" fill="#1F3A9E">正在算</text>
+        <text x="252" y="280" text-anchor="end" font-size="13" fill="#686C78">排队中</text>
+
+        <line x1="290" y1="165" x2="510" y2="165" stroke="#CFC6B5" stroke-width="12" stroke-linecap="round"/>
+        <text x="400" y="134" text-anchor="middle" font-size="16" font-weight="800" fill="#0B7A67">逐层传 KV</text>
+        <text x="400" y="206" text-anchor="middle" font-size="15" fill="#686C78">边算边传</text>
+        <g transform="translate(332 153)"><g class="pkt"><rect width="46" height="24" rx="6" fill="#0E9A82"/><text x="23" y="17" text-anchor="middle" class="m" font-size="13" font-weight="800" fill="#fff">L3</text></g></g>
+        <g transform="translate(412 153)"><g class="pkt"><rect width="46" height="24" rx="6" fill="#0E9A82"/><text x="23" y="17" text-anchor="middle" class="m" font-size="13" font-weight="800" fill="#fff">L4</text></g></g>
+
+        <rect x="510" y="20" width="270" height="280" rx="18" fill="#FFE3D8" stroke="#DD4F26" stroke-width="2"/>
+        <text x="645" y="58" text-anchor="middle" class="m" font-size="22" font-weight="800" fill="#B83C17">Mac Studio</text>
+        <text x="645" y="84" text-anchor="middle" font-size="15" font-weight="700">M3 Ultra · 负责写 · decode</text>
+        <g class="m" font-size="13" font-weight="800">
+          <rect x="536" y="102" width="96" height="26" rx="6" fill="#0E9A82"/><text x="548" y="120" fill="#fff">L1 KV</text>
+          <rect x="536" y="134" width="96" height="26" rx="6" fill="#0E9A82"/><text x="548" y="152" fill="#fff">L2 KV</text>
+          <g fill="none" stroke="#0E9A82" stroke-width="1.5" stroke-dasharray="4 3">
+            <rect x="536" y="166" width="96" height="26" rx="6"/><rect x="536" y="198" width="96" height="26" rx="6"/>
+            <rect x="536" y="230" width="96" height="26" rx="6"/><rect x="536" y="262" width="96" height="26" rx="6"/>
+          </g>
+          <g fill="#0B7A67"><text x="548" y="184">L3</text><text x="548" y="216">L4</text><text x="548" y="248">L5</text><text x="548" y="280">L6</text></g>
+        </g>
+        <g class="m" font-size="15" font-weight="800" fill="#B83C17" text-anchor="middle">
+          <rect x="650" y="134" width="104" height="30" rx="7" fill="#fff" stroke="#DD4F26" stroke-width="1.5" stroke-dasharray="5 4"/><text x="702" y="154">y₁</text>
+          <rect x="650" y="172" width="104" height="30" rx="7" fill="#fff" stroke="#DD4F26" stroke-width="1.5" stroke-dasharray="5 4"/><text x="702" y="192">y₂</text>
+          <rect x="650" y="210" width="104" height="30" rx="7" fill="#fff" stroke="#DD4F26" stroke-width="1.5" stroke-dasharray="5 4"/><text x="702" y="230">y₃</text>
+        </g>
+        <text x="702" y="268" text-anchor="middle" font-size="13" font-weight="700" fill="#B83C17">KV 到齐后开写</text>
+      </svg>
+    </div>
+  </figure>
+  <p class="punch">前面几层的 KV 先发出去，后面几层接着算 → <span class="k">传输和计算部分重叠</span>。</p>
+  <p class="note">这是第三方（EXO）的演示，图示不代表实测。末尾还没传完的数据、格式转换仍要花时间；两边的模型、位置处理和缓存格式也得兼容。</p>
+</section>
+
+<section id="recap" class="recap">
+  <p class="step" style="color:#AEB3C2">一句话</p>
+  <h2>下次觉得 AI 慢，先分清：</h2>
+  <div class="duo">
+    <div class="pill read">迟迟不开口<small>看 Prefill：输入有多长？是不是在排队？</small></div>
+    <div class="pill write">开口后写得慢<small>看 Decode：要写多长？几个人一起在用？</small></div>
+  </div>
+</section>
+
+<p class="source">内容整理自 Dongxi 东锡 NLP 的文章<a href="https://x.com/dongxi_nlp/status/2099713825402425623" rel="noopener">《Prefill and Decode》</a>。</p>
+
+</div>
+
+<script>
+  // Hero: the whole input lights up at once, then the reply appears one token at a time.
+  (function(){
+    if (!window.matchMedia || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    var hero = document.getElementById('hero');
+    var lines = hero.querySelectorAll('.hl rect');
+    var toks = hero.querySelectorAll('.ht > g');
+    var ticks = hero.querySelectorAll('.tk rect');
+    var bar = hero.querySelector('.hbar');
+    var beat = 0;
+    function show(list, n){ for (var i = 0; i < list.length; i++) list[i].style.opacity = i < n ? 1 : 0; }
+    function frame(){
+      var read = beat >= 1;
+      for (var i = 0; i < lines.length; i++) lines[i].style.opacity = read ? 1 : .2;
+      bar.style.opacity = read ? 1 : .2;
+      var n = Math.max(0, Math.min(toks.length, beat - 2));
+      show(toks, n);
+      show(ticks, n);
+      beat = beat >= 15 ? 0 : beat + 1;
+    }
+    frame();
+    setInterval(frame, 500);
+  })();
+
+  // Decode stepper: feed the last token back, store its K/V, pick the next token.
+  (function(){
+    var T = ['领导', '：', '支付', '接口', '还', '没', '联调', '，', '周五', '上线', '有', '风险', '。'];
+    var last = T.length - 1;
+    var step = 0;
+    var NS = 'http://www.w3.org/2000/svg';
+    var slots = document.querySelectorAll('#dec-slots .gen');
+    var pending = document.getElementById('dec-pending');
+    var inText = document.getElementById('dec-in');
+    var outText = document.getElementById('dec-out');
+    var count = document.getElementById('dec-count');
+    var answer = document.getElementById('dec-text');
+    var status = document.getElementById('dec-status');
+    var next = document.getElementById('dec-next');
+    function q(t){ return '「' + t + '」'; }
+    function render(){
+      for (var i = 0; i < slots.length; i++) slots[i].setAttribute('visibility', i < step ? 'visible' : 'hidden');
+      pending.setAttribute('transform', 'translate(' + (4 + step) * 48 + ' 0)');
+      pending.setAttribute('visibility', step < last ? 'visible' : 'hidden');
+      inText.textContent = step === 0 ? 'x₁…x₄' : T[step - 1];
+      outText.textContent = T[step];
+      count.textContent = (4 + step) + ' 格';
+      while (answer.firstChild) answer.removeChild(answer.firstChild);
+      var done = document.createElementNS(NS, 'tspan');
+      done.textContent = T.slice(0, step).join('');
+      var fresh = document.createElementNS(NS, 'tspan');
+      fresh.textContent = T[step];
+      fresh.setAttribute('fill', '#B83C17');
+      fresh.setAttribute('text-decoration', step < last ? 'underline' : 'none');
+      answer.appendChild(done);
+      answer.appendChild(fresh);
+      if (step === 0) status.textContent = '刚读完输入，选出第一个字' + q(T[0]) + '。缓存里还只有 4 格——' + q(T[0]) + '的 K/V 要等它被送回模型才有。';
+      else if (step < last) status.textContent = '把' + q(T[step - 1]) + '送回模型 → 缓存多存 1 格（共 ' + (4 + step) + ' 格）→ 选出' + q(T[step]) + '。';
+      else status.textContent = '把' + q(T[step - 1]) + '送回模型 → 共 ' + (4 + step) + ' 格 → 选出' + q(T[step]) + '。假设回答到这里结束：停止生成。';
+      next.disabled = step >= last;
+    }
+    next.addEventListener('click', function(){ if (step < last) { step++; render(); } });
+    document.getElementById('dec-reset').addEventListener('click', function(){ step = 0; render(); });
+    document.getElementById('dec-ctrl').hidden = false;
+    render();
+  })();
+
+  // Sharing: compare one shared machine, chunked prefill, and disaggregation.
+  (function(){
+    var caps = {
+      none: '一整段 prefill 占住机器太久，你的回答就停住了。',
+      chunked: 'Chunked prefill：把长输入切成小块，和你的生成穿插着算——你的字照常往外冒。',
+      split: 'Prefill/decode 分离：读和写交给不同的机器组。代价是要把 KV 交接过去——请求很短时，可能得不偿失。'
+    };
+    var buttons = document.querySelectorAll('#share-modes [data-mode]');
+    var cap = document.getElementById('share-cap');
+    function show(mode){
+      ['none', 'chunked', 'split'].forEach(function(key){
+        document.getElementById('share-' + key).style.display = key === mode ? '' : 'none';
+      });
+      for (var i = 0; i < buttons.length; i++) buttons[i].setAttribute('aria-pressed', String(buttons[i].getAttribute('data-mode') === mode));
+      cap.textContent = caps[mode];
+    }
+    for (var i = 0; i < buttons.length; i++) {
+      buttons[i].addEventListener('click', function(){ show(this.getAttribute('data-mode')); });
+    }
+    document.getElementById('share-modes').hidden = false;
+  })();
+</script>
+</body>
+</html>
