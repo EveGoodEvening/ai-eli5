@@ -146,6 +146,14 @@ try {
     await page.goto(`http://eli5.test/vector-map.${locale}.html`);
     await page.locator(".pin-hit").nth(4).dispatchEvent("click");
     assert.match(await page.locator("#cap").innerText(), locale === "en" ? /apple/ : /苹果/);
+
+    await page.goto(`http://eli5.test/kv-cache-why-not-q.${locale}.html`);
+    await page.locator("#redo-next").click();
+    assert.match(await page.locator("#redo-status").innerText(), locale === "en" ? /“blue”/ : /「蓝色」/);
+    await page.locator('#why-modes [data-mode="kv"]').click();
+    assert.match(await page.locator("#why-cap").innerText(), locale === "en" ? /“sky”/ : /「天空」/);
+    await page.locator("#mem-pos").fill("8");
+    assert.match(await page.locator("#mem-status").innerText(), /8,192 .*384 MiB/);
   }
 
   await page.goto("http://eli5.test/rlhf-explained.en.html#s3");

@@ -1,0 +1,840 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KV Cache: Why Keep K and V, but Not Q?</title>
+<style>
+  :root{
+    --paper:#F2F0EA;
+    --card:#FFFEFB;
+    --ink:#1A1F2E;
+    --muted:#666B78;
+    --line:#DAD4C8;
+    --q:#2F55D4;
+    --q-ink:#1F3A9E;
+    --q-soft:#E1E7FF;
+    --k:#7A4DE0;
+    --k-ink:#5B32B8;
+    --k-soft:#ECE4FF;
+    --v:#0E9A82;
+    --v-ink:#0B7A67;
+    --v-soft:#D4F1E9;
+    --hot:#DD4F26;
+    --hot-ink:#B83C17;
+    --hot-soft:#FFE3D8;
+    --sans:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+    --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  [hidden]{display:none !important}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    margin:0; background:var(--paper); color:var(--ink);
+    font-family:var(--sans); line-height:1.7;
+    background-image:linear-gradient(90deg, rgba(26,31,46,.035) 1px, transparent 1px);
+    background-size:24px 24px;
+  }
+  .wrap{max-width:960px;margin:0 auto;padding:0 20px 72px}
+  svg{display:block;width:100%;height:auto}
+  svg text{font-family:var(--sans)}
+  svg .m{font-family:var(--mono)}
+
+  /* ---------- hero ---------- */
+  header{padding:60px 0 8px}
+  .eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.2em;text-transform:uppercase;color:var(--muted);margin:0 0 14px}
+  h1{font-size:clamp(32px,6.2vw,60px);line-height:1.16;font-weight:850;letter-spacing:-.02em;margin:0 0 16px;max-width:15em}
+  .q{color:var(--q)}
+  .k{color:var(--k-ink)}
+  .v{color:var(--v-ink)}
+  .h{color:var(--hot-ink)}
+  .nw{white-space:nowrap}
+  .lead{font-size:clamp(17px,2.3vw,21px);color:#394055;margin:0;max-width:34em}
+  .tiny{font-size:14px;color:var(--muted);margin:10px 0 0}
+
+  /* ---------- sections ---------- */
+  section{padding:64px 0 4px}
+  .step{font-family:var(--mono);font-size:13px;letter-spacing:.18em;color:var(--muted);margin:0 0 6px}
+  h2{font-size:clamp(26px,4.4vw,42px);line-height:1.22;font-weight:800;letter-spacing:-.01em;margin:0 0 10px}
+  .fig{margin:22px 0 0;background:var(--card);border:1px solid var(--line);border-radius:20px;padding:18px 16px;box-shadow:0 2px 0 rgba(26,31,46,.04)}
+  .scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .punch{font-size:clamp(18px,2.6vw,23px);font-weight:750;line-height:1.5;margin:20px 0 0}
+  .note{font-size:13.5px;color:var(--muted);margin:10px 0 0}
+  .note a,.source a{color:var(--q-ink)}
+
+  /* ---------- controls ---------- */
+  .ctrl{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:16px}
+  button{font:inherit;font-size:16px;font-weight:700;border-radius:999px;padding:9px 18px;border:2px solid var(--ink);background:var(--ink);color:#fff;cursor:pointer}
+  button.ghost,.modes button{background:transparent;color:var(--ink)}
+  .modes{display:flex;flex-wrap:wrap;gap:8px}
+  .modes button[aria-pressed="true"]{background:var(--ink);color:#fff}
+  button:disabled{opacity:.4;cursor:not-allowed}
+  button:focus-visible,input:focus-visible{outline:3px solid var(--q);outline-offset:3px}
+  .slider{display:flex;align-items:center;gap:10px;font-weight:700}
+  .slider input{width:min(240px,52vw);accent-color:var(--q)}
+  .status{min-height:3.4em;margin:14px 0 0;padding:12px 16px;font-size:16.5px;background:#FFF5EF;border-left:4px solid var(--hot);border-radius:0 12px 12px 0}
+  .cap{min-height:3.4em;margin:14px 0 0;padding:12px 16px;font-size:16.5px;background:#F1F4FF;border-left:4px solid var(--q);border-radius:0 12px 12px 0}
+
+  /* stepper cells */
+  #redo-fig .tok.pend rect{fill:#fff;stroke-dasharray:6 5}
+  #redo-fig .cell rect{fill:var(--hot);stroke:none}
+  #redo-fig .cell text{fill:#fff}
+  #redo-fig .cell.keep rect{fill:var(--v-soft);stroke:var(--v);stroke-width:2}
+  #redo-fig .cell.keep text{fill:var(--v-ink)}
+
+  /* focus modes */
+  #why-fig.mode-q .kv-only,#why-fig.mode-kv .q-only{display:none}
+
+  /* formula */
+  .formula{display:flex;flex-wrap:wrap;justify-content:center;align-items:flex-start;gap:6px 8px;margin:18px 0 0;padding:22px 14px;background:var(--card);border:1px solid var(--line);border-radius:20px;font-family:var(--mono);font-size:clamp(20px,3.4vw,30px);font-weight:700}
+  .formula .fx{display:inline-flex;flex-direction:column;align-items:center;line-height:1.3}
+  .formula small{font-family:var(--sans);font-size:13px;font-weight:700;margin-top:6px;padding:2px 8px;border-radius:999px}
+  .formula .fq{color:var(--q)} .formula .fq small{background:var(--q-soft);color:var(--q-ink)}
+  .formula .fk{color:var(--k)} .formula .fk small{background:var(--k-soft);color:var(--k-ink)}
+  .formula .fv{color:var(--v)} .formula .fv small{background:var(--v-soft);color:var(--v-ink)}
+
+  .eq{display:flex;flex-wrap:wrap;justify-content:center;align-items:flex-start;gap:8px;margin:18px 0 0}
+  .eq .t{display:flex;flex-direction:column;align-items:center;min-width:76px;padding:10px 8px;background:var(--card);border:1px solid var(--line);border-radius:14px}
+  .eq .t b{font-family:var(--mono);font-size:24px;line-height:1.2}
+  .eq .t small{font-size:12.5px;color:var(--muted);text-align:center;line-height:1.35;margin-top:4px}
+  .eq .t.live{border:2px solid var(--q);background:var(--q-soft)}
+  .eq .t.live small{color:var(--q-ink);font-weight:700}
+  .eq .x{align-self:center;font-family:var(--mono);font-size:22px;color:var(--muted)}
+
+  .tri{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:22px}
+  .tri div{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:18px}
+  .tri b{display:block;font-family:var(--mono);font-size:19px}
+  .tri p{margin:6px 0 0;font-size:16px;font-weight:600}
+  .tri span{display:block;font-size:13.5px;color:var(--muted);font-weight:400}
+
+  .flow{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:18px}
+  .flow div{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:16px 18px;font-size:16.5px;font-weight:600}
+  .flow b{display:block;font-family:var(--mono);font-size:13px;letter-spacing:.14em;color:var(--muted);font-weight:500;margin-bottom:4px}
+
+  .recap{margin-top:72px;background:var(--ink);color:#fff;border-radius:24px;padding:34px 26px}
+  .recap h2{color:#fff}
+  .grid4{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:22px}
+  .pill{border-radius:16px;padding:16px 18px;font-size:18px;font-weight:700;line-height:1.45}
+  .pill small{display:block;font-weight:500;font-size:15px;margin-top:4px;opacity:.9}
+  .pill.q{background:var(--q-soft);color:var(--q-ink)}
+  .pill.h{background:var(--hot-soft);color:var(--hot-ink)}
+  .pill.v{background:var(--v-soft);color:var(--v-ink)}
+  .pill.k{background:var(--k-soft);color:var(--k-ink)}
+  .source{font-size:13.5px;color:var(--muted);margin:26px 0 0;text-align:center}
+
+  .hero-col{transition:opacity .35s ease}
+  @keyframes flow{to{stroke-dashoffset:-22}}
+  .scan{stroke-dasharray:12 10;animation:flow 1s linear infinite}
+
+  @media (max-width:700px){
+    .tri,.flow{grid-template-columns:1fr}
+  }
+  @media (max-width:600px){
+    .grid4{grid-template-columns:1fr}
+    .fig{padding:12px 10px}
+    .wide svg{min-width:620px}
+    .wide::before{content:"← Swipe to see the whole picture →";display:block;font-size:12px;color:var(--muted);text-align:center;margin-bottom:6px}
+    .recap{padding:28px 18px}
+    .eq .t{min-width:64px}
+  }
+  @media (prefers-reduced-motion:reduce){
+    .scan{animation:none}
+    .hero-col{transition:none}
+  }
+</style>
+<!-- eli5:head:start -->
+<link rel="alternate" hreflang="en" href="kv-cache-why-not-q.en.html">
+<link rel="alternate" hreflang="zh-CN" href="kv-cache-why-not-q.zh-CN.html">
+<link rel="stylesheet" href="language.css">
+<script src="language.js" defer></script>
+<!-- eli5:head:end -->
+</head>
+<body>
+<!-- eli5:nav:start -->
+<div class="eli5-site-nav" role="navigation" aria-label="Guide navigation and language">
+  <a class="eli5-nav-home" href="index.html?lang=en">← All guides</a>
+  <div class="eli5-languages">
+    <a href="kv-cache-why-not-q.zh-CN.html" data-language="zh-CN" lang="zh-CN" hreflang="zh-CN">简体中文</a>
+    <a href="kv-cache-why-not-q.en.html" data-language="en" lang="en" hreflang="en" aria-current="page">English</a>
+  </div>
+</div>
+<!-- eli5:nav:end -->
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <defs>
+    <marker id="ah-ink" viewBox="0 0 10 10" refX="8" refY="5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#1A1F2E"/></marker>
+    <marker id="ah-q" viewBox="0 0 10 10" refX="8" refY="5" markerUnits="userSpaceOnUse" markerWidth="13" markerHeight="13" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#2F55D4"/></marker>
+    <marker id="ah-v" viewBox="0 0 10 10" refX="8" refY="5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#0E9A82"/></marker>
+    <marker id="ah-hot" viewBox="0 0 10 10" refX="8" refY="5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#DD4F26"/></marker>
+    <marker id="ah-muted" viewBox="0 0 10 10" refX="8" refY="5" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#A9A293"/></marker>
+    <pattern id="kvcell" x="140" y="40" width="64" height="28" patternUnits="userSpaceOnUse"><rect width="56" height="10" rx="2" fill="#7A4DE0"/><rect y="12" width="56" height="10" rx="2" fill="#0E9A82"/></pattern>
+  </defs>
+</svg>
+
+<div class="wrap">
+
+<header>
+  <p class="eyebrow">LLM inference · KV Cache</p>
+  <h1>Why keep <span class="k">K</span> and <span class="v">V</span>, <span class="nw">but let <span class="q">Q</span> go?</span></h1>
+  <p class="lead">Each time an AI writes a token, it looks back at every token before it. The <b>KV cache</b> stores what that look-back needs.</p>
+  <p class="tiny">A token is a small chunk of text — roughly a word or part of one.</p>
+
+  <figure class="fig wide" id="hero">
+    <div class="scroll">
+      <svg viewBox="0 0 920 400" role="img" aria-label="The new token “blue” produces three things: Q, K, and V. K and V go onto the KV cache shelf and stay there; Q checks every slot on the shelf, then is dropped.">
+        <text x="124" y="28" text-anchor="middle" font-size="15" fill="#666B78">New token</text>
+        <rect x="24" y="40" width="200" height="60" rx="12" fill="#FFE3D8" stroke="#DD4F26" stroke-width="2.5"/>
+        <text id="hero-tok" x="124" y="80" text-anchor="middle" font-size="28" font-weight="800" fill="#B83C17">blue</text>
+        <g fill="none" stroke="#1A1F2E" stroke-width="2">
+          <path d="M124 100 V112 H69 V118" marker-end="url(#ah-ink)"/>
+          <path d="M124 112 H179 V118" marker-end="url(#ah-ink)"/>
+          <path d="M124 112 V208" marker-end="url(#ah-ink)"/>
+        </g>
+        <g class="m" font-size="30" font-weight="800" fill="#fff" text-anchor="middle">
+          <rect x="24" y="124" width="90" height="60" rx="12" fill="#7A4DE0"/><text x="69" y="165">K</text>
+          <rect x="134" y="124" width="90" height="60" rx="12" fill="#0E9A82"/><text x="179" y="165">V</text>
+          <rect x="24" y="214" width="200" height="60" rx="12" fill="#2F55D4"/><text x="124" y="255">Q</text>
+        </g>
+        <path d="M230 154 H300" stroke="#0E9A82" stroke-width="3" marker-end="url(#ah-v)"/>
+        <text x="265" y="142" text-anchor="middle" font-size="14" font-weight="700" fill="#0B7A67">store</text>
+
+        <rect x="308" y="40" width="588" height="196" rx="16" fill="#FFFEFB" stroke="#DAD4C8" stroke-width="2"/>
+        <text x="326" y="68" font-size="16" font-weight="800" fill="#1A1F2E"><tspan class="m">KV cache</tspan> · the shelf</text>
+        <text x="880" y="68" text-anchor="end" font-size="14" font-weight="700" fill="#0B7A67">Stays put</text>
+        <g class="m" font-size="20" font-weight="800" text-anchor="middle">
+          <text x="340" y="120" fill="#7A4DE0">K</text>
+          <text x="340" y="182" fill="#0E9A82">V</text>
+        </g>
+        <g id="hero-cols" font-size="15" text-anchor="middle" fill="#666B78">
+          <g class="hero-col"><rect x="364" y="88" width="76" height="48" rx="8" fill="#ECE4FF" stroke="#7A4DE0" stroke-width="2"/><rect x="364" y="150" width="76" height="48" rx="8" fill="#D4F1E9" stroke="#0E9A82" stroke-width="2"/><text x="402" y="222">The</text></g>
+          <g class="hero-col"><rect x="452" y="88" width="76" height="48" rx="8" fill="#ECE4FF" stroke="#7A4DE0" stroke-width="2"/><rect x="452" y="150" width="76" height="48" rx="8" fill="#D4F1E9" stroke="#0E9A82" stroke-width="2"/><text x="490" y="222">sky</text></g>
+          <g class="hero-col"><rect x="540" y="88" width="76" height="48" rx="8" fill="#ECE4FF" stroke="#7A4DE0" stroke-width="2"/><rect x="540" y="150" width="76" height="48" rx="8" fill="#D4F1E9" stroke="#0E9A82" stroke-width="2"/><text x="578" y="222">is</text></g>
+          <g class="hero-col"><rect x="628" y="88" width="76" height="48" rx="8" fill="#ECE4FF" stroke="#7A4DE0" stroke-width="2"/><rect x="628" y="150" width="76" height="48" rx="8" fill="#D4F1E9" stroke="#0E9A82" stroke-width="2"/><text x="666" y="222">blue</text></g>
+          <g class="hero-col" opacity="0"><rect x="716" y="88" width="76" height="48" rx="8" fill="#ECE4FF" stroke="#7A4DE0" stroke-width="2"/><rect x="716" y="150" width="76" height="48" rx="8" fill="#D4F1E9" stroke="#0E9A82" stroke-width="2"/><text x="754" y="222">today</text></g>
+          <g class="hero-col" opacity="0"><rect x="804" y="88" width="76" height="48" rx="8" fill="#ECE4FF" stroke="#7A4DE0" stroke-width="2"/><rect x="804" y="150" width="76" height="48" rx="8" fill="#D4F1E9" stroke="#0E9A82" stroke-width="2"/><text x="842" y="222">.</text></g>
+        </g>
+        <rect id="hero-new" x="622" y="82" width="88" height="122" rx="11" fill="none" stroke="#DD4F26" stroke-width="3" stroke-dasharray="7 5"/>
+
+        <path d="M228 244 C276 244 300 258 354 258" fill="none" stroke="#2F55D4" stroke-width="3" class="scan" marker-end="url(#ah-q)"/>
+        <path id="hero-brk" d="M364 248 V258 H704 V248" fill="none" stroke="#2F55D4" stroke-width="3"/>
+        <text x="364" y="286" font-size="16" font-weight="800" fill="#1F3A9E">Q checks every slot on the shelf</text>
+
+        <path d="M124 274 V302" stroke="#A9A293" stroke-width="2.5" marker-end="url(#ah-muted)"/>
+        <path d="M60 310 H188" stroke="#A9A293" stroke-width="4" stroke-linecap="round"/>
+        <path d="M68 316 H180 L170 386 H78 Z" fill="#ECE6DA" stroke="#A9A293" stroke-width="2"/>
+        <g opacity=".55" class="m" font-size="14" font-weight="800" text-anchor="middle" fill="#fff">
+          <rect x="86" y="334" width="34" height="24" rx="5" fill="#2F55D4" transform="rotate(-12 103 346)"/><text x="103" y="351" transform="rotate(-12 103 346)">Q</text>
+          <rect x="124" y="346" width="34" height="24" rx="5" fill="#2F55D4" transform="rotate(9 141 358)"/><text x="141" y="363" transform="rotate(9 141 358)">Q</text>
+        </g>
+        <text x="204" y="340" font-size="18" font-weight="800" fill="#1F3A9E">Q: used once, then dropped</text>
+        <text x="204" y="366" font-size="14" fill="#666B78">The next token brings a new Q</text>
+        <text x="560" y="340" font-size="18" font-weight="800" fill="#0B7A67">K / V: read again later</text>
+        <text x="560" y="366" font-size="14" fill="#666B78">So they stay on the shelf</text>
+      </svg>
+    </div>
+  </figure>
+</header>
+
+<!-- 01 · recompute? -->
+<section id="redo">
+  <p class="step">01</p>
+  <h2>Does every new token mean recomputing everything?</h2>
+  <p class="lead">No. Computed K/V stay put; each new token computes only its own.</p>
+  <figure class="fig wide">
+    <div class="scroll">
+      <svg id="redo-fig" viewBox="0 0 880 340" role="img" aria-label="Step-by-step comparison: without a cache, every new token means recomputing the K/V of all tokens; with a cache, old K/V stay put and only the new token’s K/V is computed.">
+        <text x="20" y="64" font-size="17" font-weight="800" fill="#1A1F2E">Input</text>
+        <text x="818" y="64" text-anchor="middle" font-size="13" fill="#666B78">This step</text>
+        <g font-size="17" font-weight="700" text-anchor="middle">
+          <g class="tok"><rect x="140" y="36" width="96" height="44" rx="10" fill="#E1E7FF" stroke="#2F55D4" stroke-width="2"/><text x="188" y="64" fill="#1F3A9E">The</text></g>
+          <g class="tok"><rect x="244" y="36" width="96" height="44" rx="10" fill="#E1E7FF" stroke="#2F55D4" stroke-width="2"/><text x="292" y="64" fill="#1F3A9E">sky</text></g>
+          <g class="tok"><rect x="348" y="36" width="96" height="44" rx="10" fill="#E1E7FF" stroke="#2F55D4" stroke-width="2"/><text x="396" y="64" fill="#1F3A9E">is</text></g>
+          <g class="tok pend"><rect x="452" y="36" width="96" height="44" rx="10" fill="#FFE3D8" stroke="#DD4F26" stroke-width="2"/><text x="500" y="64" fill="#B83C17">blue</text></g>
+          <g class="tok" visibility="hidden"><rect x="556" y="36" width="96" height="44" rx="10" fill="#FFE3D8" stroke="#DD4F26" stroke-width="2"/><text x="604" y="64" fill="#B83C17">today</text></g>
+          <g class="tok" visibility="hidden"><rect x="660" y="36" width="96" height="44" rx="10" fill="#FFE3D8" stroke="#DD4F26" stroke-width="2"/><text x="708" y="64" fill="#B83C17">.</text></g>
+        </g>
+        <text id="redo-pend-note" x="500" y="102" text-anchor="middle" font-size="13" font-weight="700" fill="#B83C17">just picked · no K/V yet</text>
+
+        <text x="20" y="148" font-size="18" font-weight="800" fill="#1A1F2E">No cache</text>
+        <text x="20" y="172" font-size="13" fill="#666B78">redo it all</text>
+        <text x="20" y="248" font-size="18" font-weight="800" fill="#1A1F2E">With cache</text>
+        <text x="20" y="272" font-size="13" fill="#666B78">new one only</text>
+        <line x1="20" y1="202" x2="860" y2="202" stroke="#DAD4C8" stroke-width="1.5" stroke-dasharray="4 5"/>
+        <g font-size="16" font-weight="800" text-anchor="middle">
+          <g class="cell ca"><rect x="140" y="122" width="96" height="60" rx="10"/><text x="188" y="158">compute</text></g>
+          <g class="cell ca"><rect x="244" y="122" width="96" height="60" rx="10"/><text x="292" y="158">compute</text></g>
+          <g class="cell ca"><rect x="348" y="122" width="96" height="60" rx="10"/><text x="396" y="158">compute</text></g>
+          <g class="cell ca" visibility="hidden"><rect x="452" y="122" width="96" height="60" rx="10"/><text x="500" y="158">compute</text></g>
+          <g class="cell ca" visibility="hidden"><rect x="556" y="122" width="96" height="60" rx="10"/><text x="604" y="158">compute</text></g>
+          <g class="cell ca" visibility="hidden"><rect x="660" y="122" width="96" height="60" rx="10"/><text x="708" y="158">compute</text></g>
+          <g class="cell cb"><rect x="140" y="222" width="96" height="60" rx="10"/><text x="188" y="258">compute</text></g>
+          <g class="cell cb"><rect x="244" y="222" width="96" height="60" rx="10"/><text x="292" y="258">compute</text></g>
+          <g class="cell cb"><rect x="348" y="222" width="96" height="60" rx="10"/><text x="396" y="258">compute</text></g>
+          <g class="cell cb" visibility="hidden"><rect x="452" y="222" width="96" height="60" rx="10"/><text x="500" y="258">compute</text></g>
+          <g class="cell cb" visibility="hidden"><rect x="556" y="222" width="96" height="60" rx="10"/><text x="604" y="258">compute</text></g>
+          <g class="cell cb" visibility="hidden"><rect x="660" y="222" width="96" height="60" rx="10"/><text x="708" y="258">compute</text></g>
+        </g>
+        <g class="m" font-size="30" font-weight="800" text-anchor="middle" fill="#B83C17">
+          <text id="cnt-a" x="818" y="163">×3</text>
+          <text id="cnt-b" x="818" y="263">×3</text>
+        </g>
+        <text id="redo-tot" x="140" y="324" font-size="16" font-weight="700" fill="#1A1F2E">Computed so far: no cache 3 · with cache 3</text>
+      </svg>
+    </div>
+  </figure>
+  <div class="ctrl" id="redo-ctrl" hidden>
+    <button type="button" id="redo-next">Feed it back: next token →</button>
+    <button type="button" class="ghost" id="redo-reset">Start over</button>
+  </div>
+  <p class="status" id="redo-status" aria-live="polite">First the model reads the input “The sky is” (prefill): the K/V for all 3 tokens are computed together and cached. It picks the first new token, “blue” — which has no K/V yet. Those are computed only when “blue” is fed back in.</p>
+  <p class="punch">Old tokens’ K/V are <span class="v">computed once, used again and again</span>; each step computes <span class="h">just one new set</span>.</p>
+</section>
+
+<!-- 02 · Q K V -->
+<section id="qkv">
+  <p class="step">02</p>
+  <h2>What are Q, K, and V?</h2>
+  <p class="lead">Inside an attention layer, every token is turned into three things.</p>
+  <figure class="fig wide">
+    <div class="scroll">
+      <svg viewBox="0 0 880 380" role="img" aria-label="A token’s state h passes through three projections and becomes Q (a question: what do I need?), K (a label: what do I have?), and V (content: pick me and take this).">
+        <rect x="320" y="14" width="240" height="72" rx="14" fill="#FFFEFB" stroke="#1A1F2E" stroke-width="2"/>
+        <text x="440" y="46" text-anchor="middle" font-size="22" font-weight="800" fill="#B83C17">blue</text>
+        <text x="440" y="72" text-anchor="middle" font-size="13" fill="#666B78">this token’s current state <tspan class="m">h</tspan></text>
+        <g fill="none" stroke="#1A1F2E" stroke-width="2.5">
+          <path d="M400 88 C400 116 178 108 178 134" marker-end="url(#ah-ink)"/>
+          <path d="M440 88 V134" marker-end="url(#ah-ink)"/>
+          <path d="M480 88 C480 116 702 108 702 134" marker-end="url(#ah-ink)"/>
+        </g>
+        <text x="290" y="98" text-anchor="middle" font-size="13" fill="#666B78">project</text>
+        <text x="450" y="122" font-size="13" fill="#666B78">project</text>
+        <text x="590" y="98" text-anchor="middle" font-size="13" fill="#666B78">project</text>
+
+        <rect x="58" y="140" width="240" height="224" rx="18" fill="#E1E7FF" stroke="#2F55D4" stroke-width="2.5"/>
+        <rect x="320" y="140" width="240" height="224" rx="18" fill="#ECE4FF" stroke="#7A4DE0" stroke-width="2.5"/>
+        <rect x="582" y="140" width="240" height="224" rx="18" fill="#D4F1E9" stroke="#0E9A82" stroke-width="2.5"/>
+        <g class="m" font-size="60" font-weight="800" text-anchor="middle">
+          <text x="178" y="212" fill="#2F55D4">Q</text>
+          <text x="440" y="212" fill="#7A4DE0">K</text>
+          <text x="702" y="212" fill="#0E9A82">V</text>
+        </g>
+        <g font-size="24" font-weight="800" text-anchor="middle">
+          <text x="178" y="252" fill="#1F3A9E">Question</text>
+          <text x="440" y="252" fill="#5B32B8">Label</text>
+          <text x="702" y="252" fill="#0B7A67">Content</text>
+        </g>
+        <g font-size="17" font-weight="700" text-anchor="middle" fill="#1A1F2E">
+          <text x="178" y="292">“What do I need?”</text>
+          <text x="440" y="292">“What do I have?”</text>
+          <text x="702" y="292">“Pick me, take this”</text>
+        </g>
+        <g font-size="14" text-anchor="middle" fill="#666B78">
+          <text x="178" y="336">like the question in your hand</text>
+          <text x="440" y="336">like a book’s spine label</text>
+          <text x="702" y="336">like what’s inside the book</text>
+        </g>
+      </svg>
+    </div>
+  </figure>
+  <p class="punch">The new token matches its <span class="q">Q</span> against every token’s <span class="k">K</span>; the better the match, the more of that token’s <span class="v">V</span> it takes.</p>
+</section>
+
+<!-- 03 · why not Q -->
+<section id="why-not-q">
+  <p class="step">03 · THE KEY IDEA</p>
+  <h2>Why keep K/V, but not Q?</h2>
+  <p class="lead">Draw “who reads whom” at each step as a table:</p>
+  <figure class="fig wide">
+    <div class="scroll">
+      <svg id="why-fig" viewBox="0 0 880 500" role="img" aria-label="A triangular table: each row is one token’s Q, each column is one token’s K/V. Each Q appears only in its own row and is used once; each K/V pair fills a whole column, and every later row — including the next new token — reads it again.">
+        <g text-anchor="middle">
+          <g class="m" font-size="12" fill="#666B78">
+            <text x="232" y="50">K/V</text><text x="312" y="50">K/V</text><text x="392" y="50">K/V</text><text x="472" y="50">K/V</text><text x="552" y="50">K/V</text><text x="632" y="50">K/V</text><text x="712" y="50">K/V</text>
+          </g>
+          <g font-size="15" font-weight="700" fill="#1A1F2E">
+            <text x="232" y="74">The</text><text x="312" y="74">sky</text><text x="392" y="74">is</text><text x="472" y="74">blue</text><text x="552" y="74">today</text><text x="632" y="74">.</text><text x="712" y="74" fill="#666B78">next</text>
+          </g>
+        </g>
+        <g font-size="15" font-weight="700" text-anchor="end" fill="#1A1F2E">
+          <text x="180" y="121"><tspan class="m" fill="#2F55D4">Q</tspan> The</text>
+          <text x="180" y="175"><tspan class="m" fill="#2F55D4">Q</tspan> sky</text>
+          <text x="180" y="229"><tspan class="m" fill="#2F55D4">Q</tspan> is</text>
+          <text x="180" y="283"><tspan class="m" fill="#2F55D4">Q</tspan> blue</text>
+          <text x="180" y="337"><tspan class="m" fill="#2F55D4">Q</tspan> today</text>
+          <text x="180" y="391"><tspan class="m" fill="#2F55D4">Q</tspan> .</text>
+          <text x="180" y="445" fill="#666B78"><tspan class="m" fill="#2F55D4">Q</tspan> next token</text>
+        </g>
+        <g fill="#E1E7FF">
+          <rect x="196" y="92" width="72" height="46" rx="8"/>
+          <rect x="196" y="146" width="72" height="46" rx="8"/><rect x="276" y="146" width="72" height="46" rx="8"/>
+          <rect x="196" y="200" width="72" height="46" rx="8"/><rect x="276" y="200" width="72" height="46" rx="8"/><rect x="356" y="200" width="72" height="46" rx="8"/>
+          <rect x="196" y="254" width="72" height="46" rx="8"/><rect x="276" y="254" width="72" height="46" rx="8"/><rect x="356" y="254" width="72" height="46" rx="8"/><rect x="436" y="254" width="72" height="46" rx="8"/>
+          <rect x="196" y="308" width="72" height="46" rx="8"/><rect x="276" y="308" width="72" height="46" rx="8"/><rect x="356" y="308" width="72" height="46" rx="8"/><rect x="436" y="308" width="72" height="46" rx="8"/><rect x="516" y="308" width="72" height="46" rx="8"/>
+          <rect x="196" y="362" width="72" height="46" rx="8"/><rect x="276" y="362" width="72" height="46" rx="8"/><rect x="356" y="362" width="72" height="46" rx="8"/><rect x="436" y="362" width="72" height="46" rx="8"/><rect x="516" y="362" width="72" height="46" rx="8"/><rect x="596" y="362" width="72" height="46" rx="8"/>
+        </g>
+        <g fill="none" stroke="#2F55D4" stroke-width="2" stroke-dasharray="5 4">
+          <rect x="197" y="417" width="70" height="44" rx="8"/><rect x="277" y="417" width="70" height="44" rx="8"/><rect x="357" y="417" width="70" height="44" rx="8"/><rect x="437" y="417" width="70" height="44" rx="8"/><rect x="517" y="417" width="70" height="44" rx="8"/><rect x="597" y="417" width="70" height="44" rx="8"/><rect x="677" y="417" width="70" height="44" rx="8"/>
+        </g>
+        <text x="480" y="116" font-size="14" fill="#666B78">The top right is empty:</text>
+        <text x="480" y="138" font-size="14" fill="#666B78">each token sees only itself and earlier ones</text>
+
+        <g class="q-only">
+          <g fill="#2F55D4">
+            <rect x="196" y="254" width="72" height="46" rx="8"/><rect x="276" y="254" width="72" height="46" rx="8"/><rect x="356" y="254" width="72" height="46" rx="8"/><rect x="436" y="254" width="72" height="46" rx="8"/>
+          </g>
+          <rect x="96" y="250" width="416" height="54" rx="11" fill="none" stroke="#1F3A9E" stroke-width="3"/>
+          <text x="528" y="283" font-size="16" font-weight="800" fill="#1F3A9E">← this Q is used only in this row</text>
+        </g>
+        <g class="kv-only">
+          <g fill="#0E9A82" opacity=".92">
+            <rect x="276" y="146" width="72" height="46" rx="8"/><rect x="276" y="200" width="72" height="46" rx="8"/><rect x="276" y="254" width="72" height="46" rx="8"/><rect x="276" y="308" width="72" height="46" rx="8"/><rect x="276" y="362" width="72" height="46" rx="8"/>
+          </g>
+          <rect x="277" y="417" width="70" height="44" rx="8" fill="#D4F1E9" stroke="#0E9A82" stroke-width="2.5" stroke-dasharray="5 4"/>
+          <rect x="272" y="56" width="80" height="410" rx="12" fill="none" stroke="#0B7A67" stroke-width="3"/>
+          <text x="270" y="490" font-size="16" font-weight="800" fill="#0B7A67">↑ this K/V pair: every later token reads it</text>
+        </g>
+      </svg>
+    </div>
+  </figure>
+  <div class="ctrl modes" id="why-modes" hidden>
+    <button type="button" data-mode="q" aria-pressed="true">Follow one Q</button>
+    <button type="button" data-mode="kv" aria-pressed="false">Follow one K/V pair</button>
+  </div>
+  <p class="cap" id="why-cap" aria-live="polite">The blue row: the Q of “blue” is used once. The green column: the K/V of “sky” is read by every later token.</p>
+
+  <p class="formula" role="img" aria-label="Formula: the output at position t equals softmax of q_t times K transposed, divided by the square root of d, times V. q_t is just the current one; K and V are everything from the start up to now.">
+    <span class="fx"><span>output<sub>t</sub> = softmax(</span></span>
+    <span class="fx fq"><span>q<sub>t</sub></span><small>just this one</small></span>
+    <span class="fx fk"><span>K<sub>≤t</sub><sup>⊤</sup></span><small>everything so far</small></span>
+    <span class="fx"><span>/ √d ) ·</span></span>
+    <span class="fx fv"><span>V<sub>≤t</sub></span><small>everything so far</small></span>
+  </p>
+  <p class="punch"><span class="q">Q is used once</span> → no need to store it. <span class="v">K/V will be read again</span> → store them. That’s why it’s called a <b>KV</b> cache.</p>
+</section>
+
+<!-- 04 · one decode step -->
+<section id="one-step">
+  <p class="step">04</p>
+  <h2>What actually happens when a new token comes in?</h2>
+  <p class="lead">Zoom in on the moment “blue” is fed back in, looking at a single attention head:</p>
+  <figure class="fig wide">
+    <div class="scroll">
+      <svg viewBox="0 0 880 490" role="img" aria-label="One decode step: “blue” is projected into q, k, and v. Step one: k and v go into the cache first. Step two: q is scored against every K in the cache. Step three: softmax turns the scores into weights. Step four: the V’s are added up by weight to give this head’s output.">
+        <rect x="20" y="24" width="120" height="56" rx="10" fill="#DD4F26"/>
+        <text x="80" y="60" text-anchor="middle" font-size="22" font-weight="800" fill="#fff">blue</text>
+        <path d="M144 52 H178" stroke="#1A1F2E" stroke-width="2.5" marker-end="url(#ah-ink)"/>
+        <rect x="184" y="24" width="180" height="56" rx="10" fill="#FFFEFB" stroke="#1A1F2E" stroke-width="2"/>
+        <text x="274" y="58" text-anchor="middle" font-size="16" font-weight="800" fill="#1A1F2E">Q/K/V projection</text>
+        <path d="M368 52 H398" stroke="#1A1F2E" stroke-width="2.5" marker-end="url(#ah-ink)"/>
+        <g class="m" font-size="26" font-weight="800" fill="#fff" text-anchor="middle">
+          <rect x="404" y="24" width="56" height="56" rx="10" fill="#2F55D4"/><text x="432" y="61">q</text>
+          <rect x="470" y="24" width="56" height="56" rx="10" fill="#7A4DE0"/><text x="498" y="61">k</text>
+          <rect x="536" y="24" width="56" height="56" rx="10" fill="#0E9A82"/><text x="564" y="61">v</text>
+        </g>
+        <text x="604" y="58" font-size="16" font-weight="800" fill="#B83C17">① k and v go on the shelf first</text>
+        <path d="M531 84 C531 120 804 112 804 150" fill="none" stroke="#DD4F26" stroke-width="2.5" marker-end="url(#ah-hot)"/>
+
+        <rect x="500" y="120" width="360" height="180" rx="14" fill="#FFFEFB" stroke="#DAD4C8" stroke-width="2"/>
+        <text x="516" y="144" class="m" font-size="14" font-weight="700" fill="#666B78">KV cache</text>
+        <g class="m" font-size="18" font-weight="800" text-anchor="end">
+          <text x="488" y="184" fill="#7A4DE0">K</text>
+          <text x="488" y="242" fill="#0E9A82">V</text>
+        </g>
+        <g stroke-width="2">
+          <rect x="516" y="154" width="72" height="46" rx="8" fill="#ECE4FF" stroke="#7A4DE0"/>
+          <rect x="600" y="154" width="72" height="46" rx="8" fill="#ECE4FF" stroke="#7A4DE0"/>
+          <rect x="684" y="154" width="72" height="46" rx="8" fill="#ECE4FF" stroke="#7A4DE0"/>
+          <rect x="768" y="154" width="72" height="46" rx="8" fill="#ECE4FF" stroke="#DD4F26" stroke-width="3"/>
+          <rect x="516" y="212" width="72" height="46" rx="8" fill="#D4F1E9" stroke="#0E9A82"/>
+          <rect x="600" y="212" width="72" height="46" rx="8" fill="#D4F1E9" stroke="#0E9A82"/>
+          <rect x="684" y="212" width="72" height="46" rx="8" fill="#D4F1E9" stroke="#0E9A82"/>
+          <rect x="768" y="212" width="72" height="46" rx="8" fill="#D4F1E9" stroke="#DD4F26" stroke-width="3"/>
+        </g>
+        <g font-size="14" text-anchor="middle" fill="#666B78">
+          <text x="552" y="284">The</text><text x="636" y="284">sky</text><text x="720" y="284">is</text><text x="804" y="284" font-weight="800" fill="#B83C17">blue</text>
+        </g>
+
+        <path d="M432 84 V356 H496" fill="none" stroke="#2F55D4" stroke-width="2.5" marker-end="url(#ah-q)"/>
+        <text x="20" y="350" font-size="16" font-weight="800" fill="#1F3A9E">② q meets each K → a score</text>
+        <g fill="#2F55D4">
+          <rect x="534" y="364" width="36" height="12" rx="3"/>
+          <rect x="618" y="356" width="36" height="20" rx="3"/>
+          <rect x="702" y="352" width="36" height="24" rx="3"/>
+          <rect x="786" y="336" width="36" height="40" rx="3"/>
+        </g>
+        <line x1="508" y1="376" x2="852" y2="376" stroke="#DAD4C8" stroke-width="1.5"/>
+        <text x="20" y="402" font-size="16" font-weight="800" fill="#1A1F2E">③ softmax → weights</text>
+        <g class="m" font-size="15" font-weight="800" text-anchor="middle" fill="#1A1F2E">
+          <text x="552" y="400">10%</text><text x="636" y="400">20%</text><text x="720" y="400">25%</text><text x="804" y="400">45%</text>
+        </g>
+        <g fill="none" stroke="#0E9A82" stroke-width="2">
+          <path d="M552 408 L618 428" marker-end="url(#ah-v)"/>
+          <path d="M636 408 L660 428" marker-end="url(#ah-v)"/>
+          <path d="M720 408 L700 428" marker-end="url(#ah-v)"/>
+          <path d="M804 408 L742 428" marker-end="url(#ah-v)"/>
+        </g>
+        <text x="20" y="460" font-size="16" font-weight="800" fill="#0B7A67">④ blend the V’s by weight</text>
+        <rect x="560" y="432" width="240" height="44" rx="10" fill="#D4F1E9" stroke="#0E9A82" stroke-width="2"/>
+        <text x="680" y="460" text-anchor="middle" font-size="17" font-weight="800" fill="#0B7A67">this head’s output</text>
+      </svg>
+    </div>
+  </figure>
+  <p class="punch">Then <span class="q">q leaves the stage</span>; <span class="v">k and v stay on the shelf</span> for the next token to read.</p>
+  <p class="note">Because k and v enter the cache first, q can also attend to “blue” itself. The head’s output still passes through many later computations before it becomes scores for the next token. With or without the cache, the results should match (up to tiny numerical differences).</p>
+</section>
+
+<!-- 05 · append vs edit -->
+<section id="edit">
+  <p class="step">05</p>
+  <h2>Add a line at the end vs change a number at the start: which breaks the cache?</h2>
+  <figure class="fig wide">
+    <div class="scroll">
+      <svg viewBox="0 0 880 380" role="img" aria-label="Top: append “List risks” to the end of the document; the K/V of the first five blocks are all reused, and only the new block is computed. Bottom: change the budget near the start from 1M to 500K; everything before the edit can still be reused, but the edit and everything after it must be recomputed, because information only flows forward.">
+        <text x="20" y="66" font-size="17" font-weight="800" fill="#1A1F2E">① Append</text>
+        <text x="20" y="90" font-size="13" fill="#666B78">a question</text>
+        <g font-size="14" font-weight="700" text-anchor="middle">
+          <g fill="#E1E7FF" stroke="#2F55D4" stroke-width="2">
+            <rect x="150" y="40" width="108" height="44" rx="10"/><rect x="268" y="40" width="108" height="44" rx="10"/><rect x="386" y="40" width="108" height="44" rx="10"/><rect x="504" y="40" width="108" height="44" rx="10"/><rect x="622" y="40" width="108" height="44" rx="10"/>
+          </g>
+          <rect x="740" y="40" width="108" height="44" rx="10" fill="#FFE3D8" stroke="#DD4F26" stroke-width="2"/>
+          <g fill="#1F3A9E"><text x="204" y="67">Project doc</text><text x="322" y="67">Budget 1M</text><text x="440" y="67">Schedule</text><text x="558" y="67">Team</text><text x="676" y="67">Delivery</text></g>
+          <text x="794" y="67" fill="#B83C17">List risks</text>
+        </g>
+        <g font-size="13" font-weight="800" text-anchor="middle" fill="#fff">
+          <g fill="#0E9A82"><rect x="150" y="92" width="108" height="24" rx="6"/><rect x="268" y="92" width="108" height="24" rx="6"/><rect x="386" y="92" width="108" height="24" rx="6"/><rect x="504" y="92" width="108" height="24" rx="6"/><rect x="622" y="92" width="108" height="24" rx="6"/></g>
+          <rect x="740" y="92" width="108" height="24" rx="6" fill="#DD4F26"/>
+          <text x="204" y="109">reuse</text><text x="322" y="109">reuse</text><text x="440" y="109">reuse</text><text x="558" y="109">reuse</text><text x="676" y="109">reuse</text><text x="794" y="109">new</text>
+        </g>
+        <path d="M150 126 V134 H730 V126" fill="none" stroke="#0E9A82" stroke-width="2"/>
+        <text x="440" y="156" text-anchor="middle" font-size="15" font-weight="800" fill="#0B7A67">All the old K/V still work</text>
+
+        <text x="20" y="232" font-size="17" font-weight="800" fill="#1A1F2E">② Edit</text>
+        <text x="20" y="256" font-size="13" fill="#666B78">1M → 500K</text>
+        <g fill="none" stroke="#DD4F26" stroke-width="2" stroke-dasharray="5 4">
+          <path d="M340 204 Q390 180 436 202" marker-end="url(#ah-hot)"/>
+          <path d="M330 204 Q444 164 554 202" marker-end="url(#ah-hot)"/>
+          <path d="M320 204 Q498 150 672 202" marker-end="url(#ah-hot)"/>
+        </g>
+        <g font-size="14" font-weight="700" text-anchor="middle">
+          <g fill="#E1E7FF" stroke="#2F55D4" stroke-width="2">
+            <rect x="150" y="206" width="108" height="44" rx="10"/><rect x="386" y="206" width="108" height="44" rx="10"/><rect x="504" y="206" width="108" height="44" rx="10"/><rect x="622" y="206" width="108" height="44" rx="10"/>
+          </g>
+          <rect x="268" y="206" width="108" height="44" rx="10" fill="#FFE3D8" stroke="#DD4F26" stroke-width="2.5"/>
+          <g fill="#1F3A9E"><text x="204" y="233">Project doc</text><text x="440" y="233">Schedule</text><text x="558" y="233">Team</text><text x="676" y="233">Delivery</text></g>
+          <text x="322" y="233" fill="#B83C17" font-weight="800" font-size="13">Budget 500K</text>
+        </g>
+        <g font-size="13" font-weight="800" text-anchor="middle" fill="#fff">
+          <rect x="150" y="258" width="108" height="24" rx="6" fill="#0E9A82"/>
+          <g fill="#DD4F26"><rect x="268" y="258" width="108" height="24" rx="6"/><rect x="386" y="258" width="108" height="24" rx="6"/><rect x="504" y="258" width="108" height="24" rx="6"/><rect x="622" y="258" width="108" height="24" rx="6"/></g>
+          <text x="204" y="275">reuse</text><text x="322" y="275">redo</text><text x="440" y="275">redo</text><text x="558" y="275">redo</text><text x="676" y="275">redo</text>
+        </g>
+        <path d="M268 292 V300 H730 V292" fill="none" stroke="#DD4F26" stroke-width="2"/>
+        <text x="499" y="322" text-anchor="middle" font-size="15" font-weight="800" fill="#B83C17">From the edit onward, recompute everything</text>
+
+        <path d="M150 346 H846" stroke="#A9A293" stroke-width="2.5" marker-end="url(#ah-muted)"/>
+        <text x="150" y="372" font-size="14" fill="#666B78">Information only flows forward: each token sees only itself and earlier ones</text>
+      </svg>
+    </div>
+  </figure>
+  <p class="punch">Add to the end → <span class="v">the old cache still works</span>; change something earlier → <span class="h">recompute from that point on</span>.</p>
+  <p class="note">This is causal attention: earlier tokens can’t see later ones, so appending at the end can’t change what was already computed.</p>
+</section>
+
+<!-- 06 · memory -->
+<section id="memory">
+  <p class="step">06</p>
+  <h2>Less computing, but more memory</h2>
+  <p class="lead">Every extra token adds another slot of K/V to the shelf. Try it:</p>
+  <figure class="fig wide">
+    <div class="scroll">
+      <svg viewBox="0 0 880 344" role="img" aria-label="KV cache memory calculator: each column stands for 1,024 positions, each row for one KV head. By default, 4,096 positions and 8 KV heads take about 192 MiB; doubling either the positions or the KV heads doubles the memory.">
+        <text x="124" y="56" text-anchor="end" font-size="14" font-weight="700" fill="#666B78">KV heads</text>
+        <text id="mem-heads-n" x="124" y="84" text-anchor="end" class="m" font-size="22" font-weight="800" fill="#1A1F2E">× 8</text>
+        <g class="m" font-size="12" font-weight="800">
+          <text x="124" y="118" text-anchor="end" fill="#7A4DE0">K</text>
+          <text x="124" y="136" text-anchor="end" fill="#0E9A82">V</text>
+        </g>
+        <rect id="mem-grid" x="140" y="40" width="248" height="218" fill="url(#kvcell)"/>
+        <text x="140" y="282" font-size="13" fill="#666B78">1 column = 1,024 positions</text>
+        <text id="mem-mib" x="770" y="140" text-anchor="middle" class="m" font-size="44" font-weight="800" fill="#1F3A9E">192 MiB</text>
+        <text id="mem-pos-label" x="770" y="176" text-anchor="middle" font-size="16" fill="#666B78">4,096 positions</text>
+        <rect x="20" y="300" width="840" height="16" rx="8" fill="#E6E1D7"/>
+        <rect id="mem-bar" x="20" y="300" width="420" height="16" rx="8" fill="#2F55D4"/>
+        <text x="20" y="338" font-size="13" fill="#666B78">K/V memory only · excludes model weights and runtime overhead</text>
+      </svg>
+    </div>
+  </figure>
+  <div class="ctrl" id="mem-ctrl" hidden>
+    <label class="slider" for="mem-pos">Positions kept <input type="range" id="mem-pos" min="1" max="8" step="1" value="4" aria-valuetext="4,096 positions"></label>
+    <div class="modes" id="mem-heads">
+      <button type="button" data-heads="8" aria-pressed="true">8 KV heads</button>
+      <button type="button" data-heads="4" aria-pressed="false">4 KV heads</button>
+    </div>
+  </div>
+  <p class="status" id="mem-status" aria-live="polite">4,096 positions × 8 KV heads → 192 MiB</p>
+  <div class="eq" role="img" aria-label="Formula: bytes = 2 × B × L × T × H_KV × d × b. 2 is one copy each of K and V; B is the number of sequences, 1; L is the number of layers, 24; T is the number of positions; H_KV is the number of KV heads; d is the head width, 64; b is the bytes per number, 2.">
+    <div class="t"><b>2</b><small>K and V<br>one each</small></div><span class="x">×</span>
+    <div class="t"><b>B</b><small>sequences<br>1</small></div><span class="x">×</span>
+    <div class="t"><b>L</b><small>layers<br>24</small></div><span class="x">×</span>
+    <div class="t live"><b>T</b><small>positions<br>slider</small></div><span class="x">×</span>
+    <div class="t live"><b>H<sub>KV</sub></b><small>KV heads<br>buttons</small></div><span class="x">×</span>
+    <div class="t"><b>d</b><small>head width<br>64</small></div><span class="x">×</span>
+    <div class="t"><b>b</b><small>per number<br>2 bytes</small></div>
+  </div>
+  <p class="punch">Positions and KV heads are both multipliers: <span class="h">double either one, and memory doubles</span>.</p>
+  <p class="note">With the same settings, reading 100,000 tokens needs about 4.6 GiB for K/V alone. To see how models lighten this load, read <a href="kv-cache-mqa-gqa-mla.en.html">MHA / MQA / GQA / MLA</a>.</p>
+</section>
+
+<!-- 07 · prefix caching -->
+<section id="prefix">
+  <p class="step">07</p>
+  <h2>Same document, new question: can the cache be reused?</h2>
+  <figure class="fig wide">
+    <div class="scroll">
+      <svg viewBox="0 0 880 370" role="img" aria-label="Request A: the project doc plus “List risks”; the first prefill caches the doc’s K/V. Request B: the same doc plus “List deadlines”; the start matches, so the doc part is reused directly. Request C: an extra note comes before the doc; the start differs, so even identical doc text can’t be reused directly.">
+        <path d="M520 24 V214" stroke="#0E9A82" stroke-width="2" stroke-dasharray="5 4"/>
+        <text x="514" y="20" text-anchor="end" font-size="13" font-weight="700" fill="#0B7A67">Shared prefix ends here →</text>
+
+        <text x="20" y="64" font-size="16" font-weight="800" fill="#1A1F2E">Request A</text>
+        <rect x="120" y="36" width="390" height="48" rx="10" fill="#E1E7FF" stroke="#2F55D4" stroke-width="2"/>
+        <text x="315" y="66" text-anchor="middle" font-size="17" font-weight="800" fill="#1F3A9E">Project doc</text>
+        <rect x="530" y="36" width="180" height="48" rx="10" fill="#FFE3D8" stroke="#DD4F26" stroke-width="2"/>
+        <text x="620" y="66" text-anchor="middle" font-size="16" font-weight="700" fill="#B83C17">List risks</text>
+        <text x="120" y="110" font-size="14" font-weight="700" fill="#1F3A9E">First time: prefill caches the doc’s K/V</text>
+
+        <text x="20" y="168" font-size="16" font-weight="800" fill="#1A1F2E">Request B</text>
+        <rect x="120" y="140" width="390" height="48" rx="10" fill="#0E9A82"/>
+        <text x="315" y="170" text-anchor="middle" font-size="17" font-weight="800" fill="#fff">Project doc · reuse its K/V</text>
+        <rect x="530" y="140" width="180" height="48" rx="10" fill="#FFE3D8" stroke="#DD4F26" stroke-width="2"/>
+        <text x="620" y="170" text-anchor="middle" font-size="16" font-weight="700" fill="#B83C17">List deadlines</text>
+        <text x="120" y="214" font-size="15" font-weight="800" fill="#0B7A67">✓ Same start → skip recomputing the doc</text>
+
+        <text x="20" y="282" font-size="16" font-weight="800" fill="#1A1F2E">Request C</text>
+        <rect x="120" y="254" width="120" height="48" rx="10" fill="#FFE3D8" stroke="#DD4F26" stroke-width="2.5"/>
+        <text x="180" y="284" text-anchor="middle" font-size="15" font-weight="700" fill="#B83C17">Extra note</text>
+        <rect x="250" y="254" width="390" height="48" rx="10" fill="#FFE3D8" stroke="#DD4F26" stroke-width="2" stroke-dasharray="6 4"/>
+        <text x="445" y="284" text-anchor="middle" font-size="17" font-weight="800" fill="#B83C17">Project doc · recompute</text>
+        <rect x="650" y="254" width="180" height="48" rx="10" fill="#FFE3D8" stroke="#DD4F26" stroke-width="2"/>
+        <text x="740" y="284" text-anchor="middle" font-size="16" font-weight="700" fill="#B83C17">List deadlines</text>
+        <text x="120" y="330" font-size="15" font-weight="800" fill="#B83C17">✗ Different start → same doc text, but no direct reuse</text>
+      </svg>
+    </div>
+  </figure>
+  <p class="punch">Identical start → <span class="v">skip the repeated prefill</span>; different start → <span class="h">recompute from where it changes</span>.</p>
+  <div class="tri">
+    <div><b class="q">Prefill</b><p>A compute phase<span>reads the prompt once</span></p></div>
+    <div><b class="v">KV cache</b><p>What gets stored<span>each position’s K/V</span></p></div>
+    <div><b class="k">Prefix caching</b><p>A reuse strategy<span>same start → use the ready-made K/V</span></p></div>
+  </div>
+  <p class="note">Reuse needs all three: identical starting tokens, a compatible model and settings, and a cache that hasn’t been evicted. The new question still needs prefill, and the new answer is still written token by token — see <a href="prefill-decode-explained.en.html">Prefill and Decode</a>. Even without prefix caching, ordinary generation still uses the KV cache.</p>
+</section>
+
+<!-- 08 · shared KV -->
+<section id="shared">
+  <p class="step">08</p>
+  <h2>Can K/V be stored a different way?</h2>
+  <p class="lead">So far, every layer stores its own K/V. DeepSeek-V4.1-Flash takes another approach:</p>
+  <figure class="fig wide">
+    <div class="scroll">
+      <svg viewBox="0 0 880 440" role="img" aria-label="The encoder output passes through the layer-21 projection and becomes one global KV shared by layers 21 through 40; each layer still has its own Q and local KV, and picks which global entries to read. Zooming in on one selected vector: it is scored against Q as a K, and summed by weight as a V.">
+        <rect x="40" y="40" width="200" height="60" rx="12" fill="#E1E7FF" stroke="#2F55D4" stroke-width="2"/>
+        <text x="140" y="76" text-anchor="middle" font-size="17" font-weight="800" fill="#1F3A9E">Encoder output</text>
+        <path d="M244 70 H330" stroke="#1A1F2E" stroke-width="2.5" marker-end="url(#ah-ink)"/>
+        <text x="288" y="58" text-anchor="middle" font-size="13" fill="#666B78">layer 21</text>
+        <text x="288" y="92" text-anchor="middle" font-size="13" fill="#666B78">projection</text>
+        <rect x="336" y="22" width="240" height="90" rx="14" fill="#ECE4FF" stroke="#7A4DE0" stroke-width="2.5"/>
+        <text x="456" y="50" text-anchor="middle" font-size="17" font-weight="800" fill="#5B32B8">One global KV</text>
+        <g fill="#FFFEFB" stroke="#7A4DE0" stroke-width="2">
+          <rect x="370" y="66" width="48" height="30" rx="6"/><rect x="432" y="66" width="48" height="30" rx="6"/><rect x="494" y="66" width="48" height="30" rx="6"/>
+        </g>
+        <g fill="#7A4DE0">
+          <rect x="380" y="74" width="6" height="14"/><rect x="391" y="74" width="6" height="14"/><rect x="402" y="74" width="6" height="14"/>
+          <rect x="442" y="74" width="6" height="14"/><rect x="453" y="74" width="6" height="14"/><rect x="464" y="74" width="6" height="14"/>
+          <rect x="504" y="74" width="6" height="14"/><rect x="515" y="74" width="6" height="14"/><rect x="526" y="74" width="6" height="14"/>
+        </g>
+        <text x="600" y="60" font-size="16" font-weight="800" fill="#1A1F2E">Layers 21–40</text>
+        <text x="600" y="84" font-size="14" fill="#666B78">all share this one</text>
+
+        <g fill="none" stroke="#7A4DE0" stroke-width="2.5">
+          <path d="M456 112 V146"/>
+          <path d="M180 146 H740"/>
+          <path d="M180 146 V174" marker-end="url(#ah-ink)"/>
+          <path d="M456 146 V174" marker-end="url(#ah-ink)"/>
+          <path d="M740 146 V174" marker-end="url(#ah-ink)"/>
+        </g>
+        <g stroke="#DAD4C8" stroke-width="2" fill="#FFFEFB">
+          <rect x="60" y="180" width="240" height="90" rx="14"/>
+          <rect x="336" y="180" width="240" height="90" rx="14"/>
+          <rect x="620" y="180" width="240" height="90" rx="14"/>
+        </g>
+        <text x="598" y="232" text-anchor="middle" font-size="22" font-weight="800" fill="#A9A293">…</text>
+        <g font-size="16" font-weight="800" fill="#1A1F2E" text-anchor="middle">
+          <text x="180" y="206">Layer 21</text><text x="456" y="206">Layer 22</text><text x="740" y="206">Layer 40</text>
+        </g>
+        <g class="m" font-size="18" font-weight="800" text-anchor="middle">
+          <rect x="80" y="220" width="60" height="36" rx="8" fill="#2F55D4"/><text x="110" y="245" fill="#fff">Q</text>
+          <rect x="356" y="220" width="60" height="36" rx="8" fill="#2F55D4"/><text x="386" y="245" fill="#fff">Q</text>
+          <rect x="640" y="220" width="60" height="36" rx="8" fill="#2F55D4"/><text x="670" y="245" fill="#fff">Q</text>
+        </g>
+        <g font-size="14" font-weight="700" text-anchor="middle">
+          <rect x="156" y="220" width="124" height="36" rx="8" fill="#D4F1E9" stroke="#0E9A82" stroke-width="2"/><text x="218" y="243" fill="#0B7A67">local KV</text>
+          <rect x="432" y="220" width="124" height="36" rx="8" fill="#D4F1E9" stroke="#0E9A82" stroke-width="2"/><text x="494" y="243" fill="#0B7A67">local KV</text>
+          <rect x="716" y="220" width="124" height="36" rx="8" fill="#D4F1E9" stroke="#0E9A82" stroke-width="2"/><text x="778" y="243" fill="#0B7A67">local KV</text>
+        </g>
+        <text x="460" y="298" text-anchor="middle" font-size="14" fill="#666B78">Each layer keeps its own Q and local KV, and picks which global entries to read</text>
+
+        <line x1="40" y1="316" x2="840" y2="316" stroke="#DAD4C8" stroke-width="1.5" stroke-dasharray="4 5"/>
+        <text x="138" y="432" text-anchor="middle" font-size="14" font-weight="800" fill="#5B32B8">Zoom: one selected vector</text>
+        <rect x="96" y="368" width="84" height="40" rx="8" fill="#ECE4FF" stroke="#7A4DE0" stroke-width="2.5"/>
+        <g fill="#7A4DE0"><rect x="114" y="378" width="9" height="20"/><rect x="134" y="378" width="9" height="20"/><rect x="154" y="378" width="9" height="20"/></g>
+        <g fill="none" stroke="#1A1F2E" stroke-width="2">
+          <path d="M184 380 C240 380 250 351 296 351" marker-end="url(#ah-ink)"/>
+          <path d="M184 396 C240 396 250 405 296 405" marker-end="url(#ah-ink)"/>
+        </g>
+        <rect x="302" y="332" width="270" height="38" rx="10" fill="#E1E7FF" stroke="#2F55D4" stroke-width="2"/>
+        <text x="437" y="357" text-anchor="middle" font-size="15" font-weight="800" fill="#1F3A9E">As K: scored against Q</text>
+        <rect x="302" y="386" width="270" height="38" rx="10" fill="#D4F1E9" stroke="#0E9A82" stroke-width="2"/>
+        <text x="437" y="411" text-anchor="middle" font-size="15" font-weight="800" fill="#0B7A67">As V: added up by weight</text>
+        <text x="600" y="372" font-size="19" font-weight="800" fill="#1A1F2E">One vector, two jobs</text>
+        <text x="600" y="400" font-size="14" fill="#666B78">not two arrays side by side</text>
+      </svg>
+    </div>
+  </figure>
+  <p class="punch">One global KV <span class="k">feeds many layers</span>; one vector <span class="v">serves as both K and V</span>.</p>
+  <div class="flow">
+    <div><b>READING 100K TOKENS · ①</b>The encoder reads the whole prompt and prepares the global KV.</div>
+    <div><b>READING 100K TOKENS · ②</b>The decoder reprocesses only the last 128 tokens to rebuild local state; earlier content is reached through the global KV.</div>
+  </div>
+  <p class="note">Based on the source article’s description of DeepSeek-V4.1-Flash; the diagram is schematic. The model still keeps other state such as local caches and indexer state, and new input still passes through both the encoder and the decoder when generating.</p>
+</section>
+
+<section id="recap" class="recap">
+  <p class="step" style="color:#AEB3C2">BACK TO THAT LONG DOCUMENT</p>
+  <h2>The KV cache in four cards:</h2>
+  <div class="grid4">
+    <div class="pill q">Keep writing the answer<small>Each new token brings a new Q that reads the still-valid old K/V.</small></div>
+    <div class="pill h">Edit the start of the doc<small>Recompute from the edit onward.</small></div>
+    <div class="pill v">Ask a different question<small>Same start, compatible settings, cache still there → reuse.</small></div>
+    <div class="pill k">Read a longer doc<small>Memory grows with positions; the model’s design decides how it’s stored.</small></div>
+  </div>
+</section>
+
+<p class="source">Adapted from Dongxi NLP’s article <a href="https://x.com/dongxi_nlp/status/2098945504289669481" rel="noopener">“Why do LLMs cache K and V, but usually not Q?”</a> (in Chinese).</p>
+
+</div>
+
+<script>
+  // Hero: each new token stores its K/V on the shelf, and its Q scans every stored slot.
+  (function(){
+    if (!window.matchMedia || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    var T = ['The', 'sky', 'is', 'blue', 'today', '.'];
+    var cols = document.querySelectorAll('#hero-cols .hero-col');
+    var tok = document.getElementById('hero-tok');
+    var box = document.getElementById('hero-new');
+    var brk = document.getElementById('hero-brk');
+    var n = 4;
+    function frame(){
+      for (var i = 0; i < cols.length; i++) cols[i].setAttribute('opacity', i < n ? 1 : 0);
+      tok.textContent = T[n - 1];
+      box.setAttribute('x', 358 + (n - 1) * 88);
+      brk.setAttribute('d', 'M364 248 V258 H' + (364 + (n - 1) * 88 + 76) + ' V248');
+      n = n >= T.length ? 4 : n + 1;
+    }
+    frame();
+    setInterval(frame, 1800);
+  })();
+
+  // Recompute vs cache: count the K/V work each step needs with and without a cache.
+  (function(){
+    var T = ['The', 'sky', 'is', 'blue', 'today', '.'];
+    var P = 3;
+    var last = T.length - P - 1;
+    var step = 0;
+    var toks = document.querySelectorAll('#redo-fig .tok');
+    var rowA = document.querySelectorAll('#redo-fig .ca');
+    var rowB = document.querySelectorAll('#redo-fig .cb');
+    var note = document.getElementById('redo-pend-note');
+    var status = document.getElementById('redo-status');
+    var next = document.getElementById('redo-next');
+    function q(t){ return '“' + t + '”'; }
+    function show(el, on){ el.setAttribute('visibility', on ? 'visible' : 'hidden'); }
+    function render(){
+      var known = P + step;
+      var totalA = 0, totalB = 0;
+      for (var s = 0; s <= step; s++) { totalA += P + s; totalB += s === 0 ? P : 1; }
+      for (var i = 0; i < T.length; i++) {
+        show(toks[i], i <= known);
+        toks[i].classList.toggle('pend', i === known);
+        show(rowA[i], i < known);
+        show(rowB[i], i < known);
+        var fresh = step === 0 || i === known - 1;
+        rowB[i].classList.toggle('keep', !fresh);
+        rowB[i].querySelector('text').textContent = fresh ? 'compute' : 'kept';
+      }
+      note.setAttribute('x', 140 + known * 104 + 48);
+      document.getElementById('cnt-a').textContent = '×' + known;
+      document.getElementById('cnt-b').textContent = '×' + (step === 0 ? P : 1);
+      document.getElementById('redo-tot').textContent = 'Computed so far: no cache ' + totalA + ' · with cache ' + totalB;
+      if (step === 0) status.textContent = 'First the model reads the input “The sky is” (prefill): the K/V for all 3 tokens are computed together and cached. It picks the first new token, ' + q(T[P]) + ' — which has no K/V yet. Those are computed only when ' + q(T[P]) + ' is fed back in.';
+      else if (step < last) status.textContent = 'Feed ' + q(T[known - 1]) + ' back in. No cache: recompute all ' + known + ' tokens. With cache: compute just the 1 set for ' + q(T[known - 1]) + '. Next pick: ' + q(T[known]) + '.';
+      else status.textContent = 'Feed ' + q(T[known - 1]) + ' back in: ' + known + ' sets vs 1. Next pick: ' + q(T[known]) + '. Total so far: ' + totalA + ' vs ' + totalB + ' — the longer the document, the bigger the gap.';
+      next.disabled = step >= last;
+    }
+    next.addEventListener('click', function(){ if (step < last) { step++; render(); } });
+    document.getElementById('redo-reset').addEventListener('click', function(){ step = 0; render(); });
+    document.getElementById('redo-ctrl').hidden = false;
+    render();
+  })();
+
+  // Why not Q: focus on one query row or one key/value column.
+  (function(){
+    var caps = {
+      q: 'Follow the Q of “blue”: it’s used only once, in its own row. Once it has checked the earlier K’s, this step is done; every later token brings its own Q and never looks for this one again.',
+      kv: 'Follow the K/V of “sky”: starting from its own row, every later row reads it, and the next token will read it too. Throw it away and it has to be recomputed.'
+    };
+    var fig = document.getElementById('why-fig');
+    var wrap = document.getElementById('why-modes');
+    var buttons = wrap.querySelectorAll('[data-mode]');
+    var cap = document.getElementById('why-cap');
+    function show(mode){
+      fig.setAttribute('class', 'mode-' + mode);
+      for (var i = 0; i < buttons.length; i++) buttons[i].setAttribute('aria-pressed', String(buttons[i].getAttribute('data-mode') === mode));
+      cap.textContent = caps[mode];
+    }
+    for (var i = 0; i < buttons.length; i++) {
+      buttons[i].addEventListener('click', function(){ show(this.getAttribute('data-mode')); });
+    }
+    wrap.hidden = false;
+    show('q');
+  })();
+
+  // Memory: bytes = 2 x B x L x T x H_KV x d x b, with B=1, L=24, d=64, b=2.
+  (function(){
+    var range = document.getElementById('mem-pos');
+    var buttons = document.querySelectorAll('#mem-heads [data-heads]');
+    var heads = 8;
+    function fmt(n){ return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
+    function render(){
+      var cols = +range.value;
+      var positions = cols * 1024;
+      var mib = positions * heads * 2 * 24 * 64 * 2 / 1048576;
+      document.getElementById('mem-grid').setAttribute('width', cols * 64 - 8);
+      document.getElementById('mem-grid').setAttribute('height', heads * 28 - 6);
+      document.getElementById('mem-heads-n').textContent = '× ' + heads;
+      document.getElementById('mem-mib').textContent = mib + ' MiB';
+      document.getElementById('mem-pos-label').textContent = fmt(positions) + ' positions';
+      document.getElementById('mem-bar').setAttribute('width', 840 * mib / 384);
+      document.getElementById('mem-status').textContent = fmt(positions) + ' positions × ' + heads + ' KV heads → ' + mib + ' MiB';
+      range.setAttribute('aria-valuetext', fmt(positions) + ' positions');
+      for (var i = 0; i < buttons.length; i++) buttons[i].setAttribute('aria-pressed', String(+buttons[i].getAttribute('data-heads') === heads));
+    }
+    range.addEventListener('input', render);
+    for (var i = 0; i < buttons.length; i++) {
+      buttons[i].addEventListener('click', function(){ heads = +this.getAttribute('data-heads'); render(); });
+    }
+    document.getElementById('mem-ctrl').hidden = false;
+    render();
+  })();
+</script>
+</body>
+</html>
