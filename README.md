@@ -1,6 +1,10 @@
 # ELI5 AI
 
+![AI, made plain — visual guides to machine learning](assets/covers/ai-eli5.png)
+
 **AI, explained like you're five — with pictures.**
+
+在线阅读 / Read online: https://evegoodevening.github.io/ai-eli5/
 
 ELI5 AI is a small collection of visual, plain-language guides to how modern AI systems learn. Each explainer turns a technical idea into an interactive, approachable story with minimal jargon.
 
@@ -31,27 +35,3 @@ The filename determines a guide's language. On the index and old links, language
 
 新增概念时，请同时提供英文和简体中文版本，再运行上述生成命令。无需手动往首页添加卡片。发布仍然是普通静态文件托管，不需要 Node.js 服务或前端构建。
 
-## Preview and verification / 预览与检查
-
-```sh
-python3 -m http.server 8000
-# Open http://localhost:8000/index.html?lang=zh-CN
-```
-
-The individual guide files also open directly from disk. The directory needs an HTTP server for its fetch requests.
-
-Static checks use Node.js built-ins; no install is needed:
-
-```sh
-npm run check
-```
-
-Browser regression tests use Playwright and serve the actual files through intercepted requests, so they do not need a live deployment or GitHub access:
-
-```sh
-npm ci
-npx playwright install chromium
-npm test
-```
-
-The tests cover both language paths, persistence, browser history, old URLs, GitHub failure and retry, rapid switching, mobile overflow, and translated interactive examples. All test dependencies are development-only.
