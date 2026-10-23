@@ -35,3 +35,8 @@ The filename determines a guide's language. On the index and old links, language
 
 新增概念时，请同时提供英文和简体中文版本，再运行上述生成命令。无需手动往首页添加卡片。发布仍然是普通静态文件托管，不需要 Node.js 服务或前端构建。
 
+## Development security maintenance
+
+The site has no npm runtime dependencies. Browser checks use the pinned development-only Playwright 1.64.1. Use a security-patched Node.js release (Node 24.22.1 or newer on the Node 24 line), run `npm ci`, then `npm audit` and `npm test` after dependency updates. `npm test` includes the generated-page checks and browser coverage for all 42 translations; set `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` when using an existing compatible Chromium installation.
+
+The 2026-10-23 maintenance run passed the npm audit (zero reported vulnerabilities), page checks, and browser navigation/layout/interaction checks with Node 24.22.1.
