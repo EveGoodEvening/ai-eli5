@@ -5,7 +5,11 @@ const {chromium} = await import(process.env.ELI5_PLAYWRIGHT_MODULE || "playwrigh
 const root = new URL("../", import.meta.url);
 const stems = JSON.parse(await readFile(new URL("guides.json", root), "utf8"));
 const filenames = await readdir(root);
-const browser = await chromium.launch({executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH});
+const browser = await chromium.launch({
+  channel: "chrome",
+  chromiumSandbox: true,
+  executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH,
+});
 const failures = [];
 let apiFails = false;
 let catalogFails = false;

@@ -37,6 +37,6 @@ The filename determines a guide's language. On the index and old links, language
 
 ## Development security maintenance
 
-The site has no npm runtime dependencies. Browser checks use the pinned development-only Playwright 1.64.1. Use a security-patched Node.js release (Node 24.22.1 or newer on the Node 24 line), run `npm ci`, then `npm audit` and `npm test` after dependency updates. `npm test` includes the generated-page checks and browser coverage for all 42 translations; set `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` when using an existing compatible Chromium installation.
+The site has no npm runtime dependencies. Browser checks use the pinned development-only Playwright 1.64.1. Use a security-patched Node.js release (Node 24.22.1 or newer on the Node 24 line), run `npm ci`, then `npm audit` and `npm test` after dependency updates. The browser test defaults to installed Google Chrome stable with `chromiumSandbox: true`; keep Chrome patched independently of Playwright. `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` can select another maintained compatible executable without disabling the sandbox. Run browser checks as a non-root user with a writable home and working Chromium sandbox support, through the shared machine heavy-gate when applicable. Root launch failures must not be worked around with `--no-sandbox`. `npm test` includes generated-page checks and browser coverage for all 42 translations.
 
 The 2026-10-23 maintenance run passed the npm audit (zero reported vulnerabilities), page checks, and browser navigation/layout/interaction checks with Node 24.22.1.
